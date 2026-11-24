@@ -16,6 +16,7 @@ data/
 .DS_Store
 Thumbs.db
 # Claude Code local & temporary files
+.claude/
 .claude/settings.local.json
 .claude/*.local.json
 CLAUDE.local.md
