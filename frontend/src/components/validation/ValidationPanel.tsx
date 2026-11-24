@@ -317,7 +317,15 @@ export default function ValidationPanel({ scanId, client = validationService }: 
   const runtime = overview?.sandbox.container_runtime ?? null;
   const testsAvailable = Boolean(runtime) && runTests;
   const reportUrl = client.reportUrl(scanId, "html", false);
-  const latestRunId = overview?.runs[0]?.validation_id;
+  const latestRuns = overview?.runs.filter(
+    (run, index, runs) =>
+      runs.findIndex(
+        (candidate) =>
+          candidate.change.source_type === run.change.source_type &&
+          candidate.change.source_id === run.change.source_id,
+      ) === index,
+  ) ?? [];
+  const latestRunId = latestRuns[0]?.validation_id;
   const lastRunFor = (c: ValidationCandidate) =>
     overview?.runs.find((r) => r.change.source_type === c.source_type && r.change.source_id === c.source_id);
   const candidateFor = (run: ValidationRun) =>
@@ -451,7 +459,10 @@ export default function ValidationPanel({ scanId, client = validationService }: 
       {overview && overview.runs.length > 0 && (
         <div className="grid gap-2">
           <h3 className="text-sm font-medium">Validation runs</h3>
-          {overview.runs.map((run) => {
+          <p className="text-xs text-muted-foreground">
+            Latest result for each approved change. Earlier attempts remain available in the audit report.
+          </p>
+          {latestRuns.map((run) => {
             const isOpen = openRuns.has(run.validation_id) || (run.validation_id === latestRunId && !openRuns.has(`closed:${run.validation_id}`));
             const Chevron = isOpen ? ChevronDown : ChevronRight;
             const candidate = candidateFor(run);

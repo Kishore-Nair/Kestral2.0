@@ -237,9 +237,11 @@ describe("Sandbox panel buttons", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Copy diff/ })[0]);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("-werkzeug==2.3.3\n+werkzeug==3.0.3\n"));
 
+    expect(screen.queryByLabelText("Validation val_0")).toBeNull();
+    expect(screen.getByText(/Earlier attempts remain available in the audit report/)).toBeInTheDocument();
     const toggles = screen.getAllByRole("button", { name: /details/ });
+    expect(toggles).toHaveLength(1);
     expect(toggles[0]).toHaveTextContent("Hide details"); // newest run starts open
-    expect(toggles[1]).toHaveTextContent("Show details"); // older run starts collapsed
     fireEvent.click(toggles[0]);
     expect(screen.getAllByRole("button", { name: /details/ })[0]).toHaveTextContent("Show details");
   });
