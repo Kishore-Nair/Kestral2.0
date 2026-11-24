@@ -18,6 +18,7 @@ import { useScan, type ArtifactState } from "@/hooks/useScan";
 import { USE_MOCKS } from "@/services/scanService";
 import type { GraphStats } from "@/types/graph";
 import RemediationPanel from "@/components/remediation/RemediationPanel";
+import PrivacyPanel from "@/components/privacy/PrivacyPanel";
 import ReportDownload from "@/components/validation/ReportDownload";
 import ValidationPanel from "@/components/validation/ValidationPanel";
 import { usePersistentScanId } from "@/hooks/usePersistentScanId";
@@ -177,6 +178,7 @@ export default function Home() {
             )}
           </div>
         )}
+        {scan?.status === "COMPLETED" && <PrivacyPanel scanId={scan.scan_id} />}
         {scan?.status === "COMPLETED" && <RemediationPanel scanId={scan.scan_id} />}
         {scan?.status === "COMPLETED" && <ValidationPanel scanId={scan.scan_id} />}
         {scan?.status === "COMPLETED" && <ReportDownload scanId={scan.scan_id} />}

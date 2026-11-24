@@ -20,6 +20,11 @@ vi.mock("@/services/aiApi", async (importOriginal) => {
   return { ...actual, aiService: actual.mockAiApi };
 });
 
+vi.mock("@/services/privacyApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/services/privacyApi")>();
+  return { ...actual, privacyService: actual.mockPrivacyApi };
+});
+
 vi.mock("next/dynamic", () => ({
   default: () =>
     function GraphCanvasStub(props: { nodes: Array<{ data: { id: string }; classes?: string }>; pathIds?: string[] | null }) {
@@ -156,6 +161,73 @@ describe("FindingsPanel", () => {
     render(<FindingsPanel findings={none} labelFor={(id) => id} onShowInGraph={vi.fn()} />);
     expect(screen.getByText("Not assessed")).toBeInTheDocument();
     expect(screen.getByText("Vulnerabilities were not assessed: no source was available.")).toBeInTheDocument();
+  });
+
+  it("shows ENISA score and breached LINDDUN classes under CVSS and Priority", async () => {
+    const privacy = {
+      getPrivacy: vi.fn(async () => ({
+        schema_version: "1.0" as const,
+        scan_id: doc.scan_id,
+        data_context: "sensitive" as const,
+        dpc: 4,
+        data_contexts: [],
+        method: "ENISA SE = DPC × EI + CB",
+        dataset: {
+          dataset_file: "cve_linddun.parquet",
+          dataset_sha256: "abc",
+          dataset_rows: 280_694,
+          dataset_labelled_rows: 108_000,
+          built_at: "2026-11-24T00:00:00Z",
+          cwes: 766,
+          cwes_mapped: 342,
+          cwes_from_chain: 59,
+          label_rule: "CWE → LINDDUN",
+        },
+        summary: {
+          assessed: 1,
+          mapped: 1,
+          unmapped: 0,
+          by_band: { very_high: 1 },
+          by_linddun: { Identifiability: 1, "Data Disclosure": 1 },
+          unmapped_reasons: {},
+          max_score: 5.0,
+          max_band: "very_high" as const,
+        },
+        impacts: [
+          {
+            finding_id: bodyParser.finding_id,
+            title: bodyParser.title,
+            subject_label: bodyParser.subject_label,
+            advisory_ids: bodyParser.advisory_ids,
+            status: "mapped" as const,
+            linddun: ["Identifiability", "Data Disclosure"],
+            mappings: [],
+            score: 5.0,
+            band: "very_high" as const,
+            dpc: 4,
+            ei: 1.0,
+            cb: 1.0,
+            factors: [
+              { name: "DPC", value: 4, basis: "Sensitive personal data" },
+              { name: "EI", value: 1.0, basis: "Identifiability" },
+              { name: "CB", value: 1.0, basis: "CVSS C:H + remote" },
+            ],
+            uncertainty: [],
+            security_priority: 61,
+          },
+        ],
+        caveats: [],
+      })),
+    };
+
+    render(<FindingsPanel findings={doc} labelFor={(id) => id} onShowInGraph={vi.fn()} privacy={privacy} />);
+    expect(await screen.findByText("ENISA 5.00 · very high")).toBeInTheDocument();
+    expect(screen.getByText("Identifiability")).toBeInTheDocument();
+    expect(screen.getByText("Data Disclosure")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /SAMPLE-0001/ }));
+    expect(screen.getByText("LINDDUN classes breached:")).toBeInTheDocument();
+    expect(screen.getByText("Sensitive personal data")).toBeInTheDocument();
   });
 });
 

@@ -1,7 +1,7 @@
 """Application configuration loaded from the repository-root .env file."""
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     # Contents: read/write and Pull requests: read/write on the target repository.
     github_token: SecretStr | None = None
     github_api_url: str = "https://api.github.com"
+    # ENISA data processing context assumed for privacy impact scores until a reviewer picks
+    # one: simple | behavioural | financial | sensitive.
+    privacy_data_context: Literal["simple", "behavioural", "financial", "sensitive"] = "simple"
     max_active_scans: PositiveInt = 1
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65_535)

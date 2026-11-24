@@ -84,6 +84,45 @@ def stat(label: str, value) -> str:
     return f'<div class="stat"><div class="v">{e(value)}</div><div class="l">{escape(label)}</div></div>'
 
 
+PRIVACY_TONES = {"very_high": "crit", "high": "high", "medium": "med", "low": "low"}
+DATA_CONTEXT_LABELS = {
+    "simple": "simple data",
+    "behavioural": "behavioural data",
+    "financial": "financial data",
+    "sensitive": "sensitive data",
+}
+
+
+def privacy_html(privacy: dict | None) -> str:
+    if not privacy:
+        return '<p class="muted">Privacy impact was not assessed.</p>'
+    s = privacy["summary"]
+    b = s["by_band"]
+    rows = [
+        [
+            f"<strong>{e(i['package'])}</strong><br><span class='muted small'>{e(i['title'])}</span>",
+            badge((i["band"] or "").replace("_", " "), PRIVACY_TONES.get(i["band"], "neutral"))
+            + f"<br><span class='small'>SE {i['score']:.2f}</span>",
+            e(", ".join(i["linddun"])),
+            f"EI {i['ei']:.2f} · CB {i['cb']:.2f}",
+            e(", ".join(i["cwes"][:3])),
+        ]
+        for i in privacy["top"]
+    ]
+    reasons = ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in s["unmapped_reasons"].items())
+    classes = ", ".join(f"{k} {v}" for k, v in s["by_linddun"].items()) or "none"
+    ds = privacy["dataset"]
+    return f"""<div class="stats">
+  {stat("Findings with a privacy class", f"{s['mapped']} / {s['assessed']}")}{stat("Highest severity (SE)", s["max_score"] if s["max_score"] is not None else "n/a")}
+  {stat("Very high / high", f"{b['very_high']} / {b['high']}")}{stat("Medium / low", f"{b['medium']} / {b['low']}")}
+</div>
+<p class="small">Scored for <strong>{e(DATA_CONTEXT_LABELS.get(privacy["data_context"], privacy["data_context"]))}</strong> (DPC {privacy["dpc"]:g}).
+{e(privacy["method"])} LINDDUN classes: {e(classes)}. Not mapped: {e(reasons or "none")}.</p>
+{table(["Package / advisory", "Privacy severity", "LINDDUN", "Terms", "CWE"], rows, "No finding maps to a LINDDUN privacy threat class.")}
+<p class="small muted">Mapping: {e(ds["dataset_file"])} ({ds["dataset_rows"]:,} CVEs, {ds["cwes_mapped"]} mapped CWEs), sha256 <code>{e(ds["dataset_sha256"][:12])}</code>. Top 25 shown; all are in the JSON report.</p>
+<ul class="small">{"".join(f"<li>{e(c)}</li>" for c in privacy["caveats"])}</ul>"""
+
+
 def render_html(report: dict) -> str:
     scan = report["scan"]
     summary = report["summary"]
@@ -313,7 +352,7 @@ footer {{ margin-top:30px; padding-top:12px; border-top:1px solid var(--line); c
 </div>
 <p class="small">{summary["projects"]} project(s), {e(summary["dependency_edges"])} dependency edges, {e(summary["cves_linked"])} CVEs linked through NVD,
 {summary["workflow_pins"]} unpinned CI/CD references. Proposals: {e(", ".join(f"{k.lower()} {v}" for k, v in summary["proposals"].items() if v))}.
-{("<strong>The assessment is partial</strong>; see warnings in section 9." if summary["partial"] else "")}</p>
+{("<strong>The assessment is partial</strong>; see warnings in section 10." if summary["partial"] else "")}</p>
 
 <h2><span class="n">2</span>Component inventory</h2>
 {table(["Ecosystem", "Packages"], eco_rows, "No packages discovered")}
@@ -324,35 +363,38 @@ footer {{ margin-top:30px; padding-top:12px; border-top:1px solid var(--line); c
 <p class="small muted">Sorted by Kestral priority (50% CVSS, 20% EPSS, 20% exposure, 10% fix available). Sources: OSV, Grype, NVD. Not reachability-checked.</p>
 {capped(["Package / advisory", "Priority", "CVSS", "CVE / CWE", "Directness", "Fixed in", "Dependency path"], vuln_rows, "No known vulnerabilities were reported.", "vulnerabilities")}
 
-<h2><span class="n">4</span>Suspicious changes and supply-chain anomalies</h2>
+<h2><span class="n">4</span>Privacy impact (ENISA, LINDDUN)</h2>
+{privacy_html(report.get("privacy"))}
+
+<h2><span class="n">5</span>Suspicious changes and supply-chain anomalies</h2>
 {capped(["Subject", "Category", "Risk", "Why", "Evidence"], suspicious_rows, "No suspicious changes were found.", "findings")}
 <h4>Unpinned CI/CD components</h4>
 {table(["Action", "Finding", "Evidence"], pin_rows, "No mutable workflow references.")}
 
-<h2><span class="n">5</span>Recommended actions and human decisions</h2>
+<h2><span class="n">6</span>Recommended actions and human decisions</h2>
 <h4>Remediation proposals</h4>
 {capped(["Proposal", "Action", "Status", "Reviewer", "Decision record"], proposal_rows, "No remediation proposals.", "proposals")}
 <h4>AI-assisted recommendations (proposals only)</h4>
 {table(["Recommendation", "Change", "Deterministic check", "Status", "Human decision", "Model"], ai_rows, "No AI analyses were requested.")}
 
-<h2><span class="n">6</span>Sandbox validation results</h2>
+<h2><span class="n">7</span>Sandbox validation results</h2>
 <div class="callout">Each validation applies one approved change to a fresh copy of the exact scanned commit, runs the
 project's tests only inside a locked-down container, rescans the patched copy and compares before and after.
 Nothing is merged, pushed or deployed.</div>
 {"".join(validation_blocks) or '<p class="muted">No validations have been run.</p>'}
 
-<h2><span class="n">7</span>Remaining and accepted risk</h2>
+<h2><span class="n">8</span>Remaining and accepted risk</h2>
 {capped(["Package", "Finding", "Band", "State", "Reviewer"], remaining_rows, "No remaining critical/high or decided items.", "items")}
 <p class="small muted">{open_lower} additional open medium/low findings are listed in the JSON report.</p>
 
-<h2><span class="n">8</span>Audit trail</h2>
+<h2><span class="n">9</span>Audit trail</h2>
 {capped(["When (UTC)", "Event", "Detail"], audit_rows, "No events.", "events")}
 
-<h2><span class="n">9</span>Data sources, coverage and warnings</h2>
+<h2><span class="n">10</span>Data sources, coverage and warnings</h2>
 {table(["Source", "Status", "Detail"], source_rows, "No sources recorded.")}
 <ul class="small">{"".join(f"<li>{e(w)}</li>" for w in report["warnings"]) or '<li class="muted">No warnings</li>'}</ul>
 
-<h2><span class="n">10</span>Responsible AI and security note</h2>
+<h2><span class="n">11</span>Responsible AI and security note</h2>
 <ul class="small">{"".join(f"<li>{e(x)}</li>" for x in report["responsible_ai"])}</ul>
 <h4>Limitations</h4>
 <ul class="small">{"".join(f"<li>{e(x)}</li>" for x in report["limitations"])}</ul>

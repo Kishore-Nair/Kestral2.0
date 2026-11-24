@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.database.models import AiAnalysisRow, RemediationProposalRow, Scan, ValidationRunRow
+from app.privacy.service import assess as assess_privacy
 from app.remediation.service import to_proposal
 from app.schemas.dependency import DependencyDocument
 from app.schemas.findings import FindingsDocument
@@ -57,6 +58,33 @@ def _json(path: Path) -> dict:
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
+
+
+def privacy_view(findings: FindingsDocument, settings: Settings) -> dict:
+    """ENISA privacy impact under the configured data processing context (top 25 scored)."""
+    assessment = assess_privacy(findings, settings.privacy_data_context)
+    scored = [i for i in assessment.impacts if i.score is not None]
+    return {
+        "data_context": assessment.data_context,
+        "dpc": assessment.dpc,
+        "method": assessment.method,
+        "dataset": assessment.dataset.model_dump(mode="json"),
+        "summary": assessment.summary.model_dump(mode="json"),
+        "top": [
+            {
+                "package": i.subject_label,
+                "title": i.title,
+                "score": i.score,
+                "band": i.band,
+                "linddun": i.linddun,
+                "ei": i.ei,
+                "cb": i.cb,
+                "cwes": [m.cwe_id for m in i.mappings if m.status == "mapped"],
+            }
+            for i in scored[:25]
+        ],
+        "caveats": assessment.caveats,
+    }
 
 
 def build_report(db: Session, settings: Settings, scan: Scan) -> dict:
@@ -306,6 +334,7 @@ def build_report(db: Session, settings: Settings, scan: Scan) -> dict:
         "changes_since_previous_scan": findings.changes.model_dump(mode="json")
         if findings.changes
         else None,
+        "privacy": privacy_view(findings, settings),
         "actions": {"remediation_proposals": proposals, "ai_recommendations": ai},
         "validations": validations,
         "remaining_risks": remaining,

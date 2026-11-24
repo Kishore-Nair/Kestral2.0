@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import WarningsNotice from "@/components/WarningsNotice";
 import AiAnalysisPanel from "@/components/risk/AiAnalysisPanel";
 import { aiService, type AiApi } from "@/services/aiApi";
+import { privacyService, type PrivacyApi } from "@/services/privacyApi";
 import type { AiStatus } from "@/types/ai";
+import type { MappingStatus, PrivacyBand, PrivacyImpact } from "@/types/privacy";
 import { categoryLabel, filterFindings, highestReportedSeverity, sortFindings, sourceAgreement } from "@/lib/findings";
 import { cn } from "@/lib/utils";
 import type {
@@ -24,6 +26,8 @@ interface Props {
   onShowInGraph: (finding: Finding, path: string[] | null) => void;
   /** AI analyst client; defaults to the configured service (mock mode reports AI unavailable). */
   ai?: AiApi;
+  /** Privacy impact client; defaults to the configured service. */
+  privacy?: PrivacyApi;
 }
 
 interface AiProps {
@@ -187,7 +191,47 @@ function ChangesSection({ changes }: { changes: ChangeSummary | null | undefined
   );
 }
 
-function ScoreSection({ finding }: { finding: Finding }) {
+const ENISA_BAND_LABEL: Record<PrivacyBand, string> = {
+  very_high: "very high",
+  high: "high",
+  medium: "medium",
+  low: "low",
+};
+
+const ENISA_BAND_STYLE: Record<PrivacyBand, string> = {
+  very_high: "border-transparent bg-rose-700 text-white",
+  high: "border-transparent bg-orange-600 text-white",
+  medium: "border-amber-600/50 bg-amber-100 text-amber-900",
+  low: "border-slate-300 bg-slate-100 text-slate-700",
+};
+
+const PRIVACY_STATUS_LABEL: Record<MappingStatus, string> = {
+  mapped: "Mapped",
+  no_cwe: "No CWE on finding",
+  cwe_excluded: "Excluded (non-privacy CWE)",
+  cwe_has_no_category: "Unmapped CWE (no category)",
+  category_has_no_linddun: "Category has no LINDDUN class",
+  cwe_not_in_dataset: "CWE not in dataset",
+};
+
+export function EnisaBadge({ impact }: { impact: PrivacyImpact }) {
+  if (impact.score === null || !impact.band) return null;
+  return (
+    <Badge className={cn("tabular-nums", ENISA_BAND_STYLE[impact.band])}>
+      ENISA {impact.score.toFixed(2)} · {ENISA_BAND_LABEL[impact.band]}
+    </Badge>
+  );
+}
+
+function ScoreSection({
+  finding,
+  privacyImpact,
+  privacyContext,
+}: {
+  finding: Finding;
+  privacyImpact?: PrivacyImpact;
+  privacyContext?: string;
+}) {
   const { cvss, epss, priority } = finding;
   return (
     <section className="grid gap-2">
@@ -241,6 +285,61 @@ function ScoreSection({ finding }: { finding: Finding }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {privacyImpact && (
+        <div className="grid gap-1.5 border-t pt-2">
+          {privacyImpact.score !== null && privacyImpact.band ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <EnisaBadge impact={privacyImpact} />
+                <span className="text-muted-foreground">
+                  ENISA personal data breach severity (SE = DPC × EI + CB
+                  {privacyContext ? ` · context: ${privacyContext}` : ""})
+                </span>
+              </div>
+              {privacyImpact.linddun.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-medium">LINDDUN classes breached:</span>
+                  {privacyImpact.linddun.map((cls) => (
+                    <Badge key={cls} variant="secondary">
+                      {cls}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {privacyImpact.factors.length > 0 && (
+                <table className="w-full max-w-2xl text-left">
+                  <thead className="text-muted-foreground">
+                    <tr>
+                      <th className="font-normal">ENISA Factor</th>
+                      <th className="font-normal">Basis</th>
+                      <th className="text-right font-normal">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {privacyImpact.factors.map((f) => (
+                      <tr key={f.name} className="border-t">
+                        <td className="py-0.5 pr-2 font-mono">{f.name}</td>
+                        <td className="py-0.5 pr-2 break-words">{f.basis}</td>
+                        <td className="py-0.5 text-right tabular-nums">{f.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {privacyImpact.uncertainty.length > 0 && (
+                <p className="text-amber-800 dark:text-amber-300">
+                  {privacyImpact.uncertainty.join(" ")}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-muted-foreground">
+              <span className="font-medium text-foreground">ENISA privacy score:</span> unmapped —{" "}
+              {PRIVACY_STATUS_LABEL[privacyImpact.status]}
+            </p>
+          )}
         </div>
       )}
     </section>
@@ -311,12 +410,17 @@ function StatTile({ label, value }: { label: string; value: string | number }) {
 }
 
 function FindingDetails({
-  finding, labelFor, onShowInGraph, aiProps,
-}: { finding: Finding; labelFor: Props["labelFor"]; onShowInGraph: Props["onShowInGraph"]; aiProps: AiProps }) {
+  finding, labelFor, onShowInGraph, aiProps, privacyImpact, privacyContext,
+}: {
+  finding: Finding; labelFor: Props["labelFor"]; onShowInGraph: Props["onShowInGraph"]; aiProps: AiProps;
+  privacyImpact?: PrivacyImpact; privacyContext?: string;
+}) {
   const isVuln = finding.kind === "vulnerability";
   return (
     <div className="grid gap-3 border-t bg-muted/30 px-3 py-3 text-xs">
-      {isVuln && <ScoreSection finding={finding} />}
+      {isVuln && (
+        <ScoreSection finding={finding} privacyImpact={privacyImpact} privacyContext={privacyContext} />
+      )}
       {finding.risk_level && (
         <section className="grid gap-1">
           <h4 className="font-medium text-muted-foreground uppercase">Initial risk level</h4>
@@ -413,10 +517,11 @@ function FindingDetails({
 }
 
 function FindingRow({
-  finding, open, onToggle, labelFor, onShowInGraph, aiProps,
+  finding, open, onToggle, labelFor, onShowInGraph, aiProps, privacyImpact, privacyContext,
 }: {
   finding: Finding; open: boolean; onToggle: () => void;
   labelFor: Props["labelFor"]; onShowInGraph: Props["onShowInGraph"]; aiProps: AiProps;
+  privacyImpact?: PrivacyImpact; privacyContext?: string;
 }) {
   const isVuln = finding.kind === "vulnerability";
   const severity = highestReportedSeverity(finding);
@@ -444,6 +549,10 @@ function FindingRow({
               {isVuln && finding.cvss?.base_score == null && (
                 <Badge variant="outline">{severity ? `Severity ${severity}` : "Severity not stated"}</Badge>
               )}
+              {isVuln && privacyImpact && <EnisaBadge impact={privacyImpact} />}
+              {isVuln && privacyImpact && privacyImpact.linddun.map((cls) => (
+                <Badge key={cls} variant="secondary">{cls}</Badge>
+              ))}
               {isVuln && (finding.cwes ?? []).filter((c) => c.url).slice(0, 2).map((c) => (
                 <Badge key={c.id} variant="outline" className="font-mono">{c.id}</Badge>
               ))}
@@ -475,14 +584,27 @@ function FindingRow({
           </Button>
         )}
       </div>
-      {open && <FindingDetails finding={finding} labelFor={labelFor} onShowInGraph={onShowInGraph} aiProps={aiProps} />}
+      {open && (
+        <FindingDetails
+          finding={finding}
+          labelFor={labelFor}
+          onShowInGraph={onShowInGraph}
+          aiProps={aiProps}
+          privacyImpact={privacyImpact}
+          privacyContext={privacyContext}
+        />
+      )}
     </li>
   );
 }
 
 /** Phase 1B findings: vulnerabilities, suspicious supply-chain changes and workflow pins, with evidence. */
-export default function FindingsPanel({ findings, labelFor, onShowInGraph, ai = aiService }: Props) {
+export default function FindingsPanel({
+  findings, labelFor, onShowInGraph, ai = aiService, privacy = privacyService,
+}: Props) {
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [privacyByFinding, setPrivacyByFinding] = useState<Map<string, PrivacyImpact>>(new Map());
+  const [privacyContext, setPrivacyContext] = useState<string | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
     ai.getStatus().then(
@@ -498,6 +620,23 @@ export default function FindingsPanel({ findings, labelFor, onShowInGraph, ai = 
     );
     return () => { cancelled = true; };
   }, [ai]);
+  useEffect(() => {
+    let cancelled = false;
+    privacy.getPrivacy(findings.scan_id).then(
+      (assessment) => {
+        if (cancelled) return;
+        setPrivacyContext(assessment.data_context);
+        setPrivacyByFinding(new Map(assessment.impacts.map((item) => [item.finding_id, item])));
+      },
+      () => {
+        if (!cancelled) {
+          setPrivacyByFinding(new Map());
+          setPrivacyContext(undefined);
+        }
+      },
+    );
+    return () => { cancelled = true; };
+  }, [findings.scan_id, privacy]);
   const aiProps: AiProps = { scanId: findings.scan_id, aiStatus, ai };
   const [kind, setKind] = useState<FindingKind>("vulnerability");
   const [query, setQuery] = useState("");
@@ -605,6 +744,8 @@ export default function FindingsPanel({ findings, labelFor, onShowInGraph, ai = 
               labelFor={labelFor}
               onShowInGraph={onShowInGraph}
               aiProps={aiProps}
+              privacyImpact={privacyByFinding.get(finding.finding_id)}
+              privacyContext={privacyContext}
             />
           ))}
         </ul>
