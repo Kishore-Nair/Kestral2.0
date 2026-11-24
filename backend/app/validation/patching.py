@@ -4,9 +4,9 @@ Only the manifests of the vulnerable component's own project are edited:
 - PyPI: ``requirements*.txt`` and ``pyproject.toml`` requirement strings
 - npm: ``package.json`` dependency ranges, or ``overrides`` for a transitive package
 
-A range that already accepts the new version is left alone; an exact pin is moved to
-the new version; any other range that rejects it becomes ``>=new`` (PyPI) or keeps its
-``^``/``~`` style (npm). Files are read and written as text inside the sandbox only.
+PyPI ranges that accept the new version are left alone. npm changes pin the exact
+approved version so lock resolution cannot silently select a different upgrade.
+Files are read and written as text inside the sandbox only.
 """
 
 import difflib
@@ -18,8 +18,6 @@ from pathlib import Path
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.version import InvalidVersion, Version
-
-from app.ai.versions import npm_satisfies
 
 MAX_DIFF_LINES = 400
 MAX_FILE_BYTES = 8 * 1024 * 1024
@@ -203,22 +201,22 @@ def patch_package_json(
             continue
         found = True
         old = str(deps[package])
-        accepts = npm_satisfies(old, new)
-        if accepts and not re.fullmatch(r"v?\d+\.\d+\.\d+", old.strip()):
-            result.unchanged.append(f"{rel}: {section}.{package} {old!r} already accepts {new}")
-            continue
-        prefix = old.strip()[0] if old.strip()[:1] in ("^", "~") else ""
-        deps[package] = f"{prefix}{new}"
+        # Approval names one version. Pin it so an already-satisfying old lock
+        # cannot survive resolution and a newer unapproved version is not selected.
+        deps[package] = new
         result.edits.append(f"{rel}: {section}.{package} {old!r} -> {deps[package]!r}")
         changed = True
-    if not found and not direct:
+    if found or not direct:
         overrides = manifest.setdefault("overrides", {})
         if not isinstance(overrides, dict):
             raise PatchError(f"{rel} has an unsupported overrides field")
         old = overrides.get(package)
-        overrides[package] = new
+        # npm requires an override of a direct dependency to match its spec.
+        # Referencing the exact pin also fixes nested copies of the same package.
+        overrides[package] = f"${package}" if found else new
         result.edits.append(
-            f"{rel}: overrides.{package} {old!r} -> {new!r} (transitive dependency)"
+            f"{rel}: overrides.{package} {old!r} -> {overrides[package]!r} "
+            "(all occurrences in this project)"
         )
         changed = True
     if changed:

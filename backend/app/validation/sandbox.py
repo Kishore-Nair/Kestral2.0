@@ -11,11 +11,12 @@ Safety rules:
   limits and the source mounted read-only. Without a container runtime, tests are not run.
 """
 
-import os
+import json
 import re
 import shutil
 import subprocess
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -82,37 +83,46 @@ def checkout_commit(
 
 
 def npm_available() -> bool:
-    return shutil.which("npm") is not None
+    return container_runtime() is not None
 
 
 def regenerate_npm_lock(project_dir: Path, timeout: int) -> str:
-    """Resolve package-lock.json without installing or running package code."""
-    npm = shutil.which("npm")
-    if npm is None:
-        raise SandboxError("npm is not installed; the lockfile was not regenerated")
-    empty_rc = project_dir.parent / ".kestral-empty-npmrc"
-    empty_rc.write_text("", encoding="utf-8")
-    environment = {
-        "PATH": os.environ.get("PATH", ""),
-        "HOME": str(project_dir.parent),
-        "npm_config_userconfig": str(empty_rc),
-        "npm_config_globalconfig": str(empty_rc),
-        "npm_config_update_notifier": "false",
-    }
+    """Resolve the approved manifest in a bounded container, without lifecycle scripts."""
+    runtime = container_runtime()
+    if runtime is None:
+        raise SandboxError("A running container runtime is required for npm lock resolution")
+    executable = shutil.which(runtime)
+    name = "kestral-lock-" + uuid.uuid4().hex
     command = [
-        npm,
-        "install",
-        "--package-lock-only",
-        "--ignore-scripts",
-        "--no-audit",
-        "--no-fund",
-        "--registry=https://registry.npmjs.org/",
+        executable,
+        "run",
+        "--rm",
+        "--name",
+        name,
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--memory=1g",
+        "--cpus=2",
+        "--pids-limit=256",
+        "--tmpfs=/work:rw,size=512m",
+        "--tmpfs=/tmp:rw,size=512m",
+        "-e",
+        "HOME=/tmp",
+        "-v",
+        f"{project_dir.resolve()}:/src:ro",
+        "-w",
+        "/work",
+        "docker.io/library/node:22-slim",
+        "sh",
+        "-c",
+        "set -e; cp /src/package.json /src/package-lock.json /work/; "
+        "npm install --package-lock-only --ignore-scripts --no-audit --no-fund "
+        "--registry=https://registry.npmjs.org/ >/dev/null; cat package-lock.json",
     ]
     try:
         completed = subprocess.run(
             command,
-            cwd=project_dir,
-            env=environment,
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -121,11 +131,26 @@ def regenerate_npm_lock(project_dir: Path, timeout: int) -> str:
     except subprocess.TimeoutExpired as exc:
         raise SandboxError("npm lockfile resolution timed out") from exc
     finally:
-        empty_rc.unlink(missing_ok=True)
+        try:
+            subprocess.run(
+                [executable, "rm", "--force", name],
+                capture_output=True,
+                timeout=30,
+                stdin=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise SandboxError(f"Lock container cleanup failed; inspect {name}") from exc
     if completed.returncode != 0:
         detail = tool_error(completed.stderr or completed.stdout)
         raise SandboxError(f"npm could not resolve the lockfile: {detail}")
-    return " ".join(command[1:])
+    try:
+        lock = json.loads(completed.stdout)
+        if not isinstance(lock, dict) or lock.get("lockfileVersion") not in (1, 2, 3):
+            raise ValueError("unsupported lockfile")
+    except (ValueError, TypeError) as exc:
+        raise SandboxError("npm produced an unreadable lockfile") from exc
+    (project_dir / "package-lock.json").write_text(completed.stdout, encoding="utf-8")
+    return "npm install --package-lock-only --ignore-scripts (isolated container)"
 
 
 def regenerate_uv_lock_in_container(
@@ -287,6 +312,7 @@ class TestPlan:
     image: str
     script: str
     description: str
+    setup_script: str | None = None
 
 
 def test_plan(ecosystem: str, project_dir: Path) -> TestPlan | None:
@@ -327,6 +353,19 @@ def test_plan(ecosystem: str, project_dir: Path) -> TestPlan | None:
             if (project_dir / "package-lock.json").is_file()
             else "npm install --ignore-scripts --no-audit --no-fund"
         )
+        from app.validation.profiles import nodegoat_script
+
+        reviewed = nodegoat_script(project_dir)
+        if reviewed:
+            return TestPlan(
+                "docker.io/library/node:22-slim",
+                reviewed,
+                "NodeGoat: syntax checks; 6 HTTP/parser/contribution regressions; "
+                "in-memory database; offline tests (not full application coverage)",
+                "set -e; cp -a /src/. /work/; cd /work; "
+                "rm -f .npmrc; npm ci --ignore-scripts --no-audit --no-fund "
+                "--registry=https://registry.npmjs.org/",
+            )
         script = (
             "set -u; cp -a /src/. /work/ && cd /work && "
             f"({install}) || {{ echo {INSTALL_FAILED}; exit 97; }}; "
@@ -344,10 +383,14 @@ def run_tests_in_container(
     executable = shutil.which(runtime)
     if executable is None:
         raise SandboxError(f"{runtime} is not installed")
+    if plan.setup_script:
+        return _run_staged_tests(executable, plan, project_dir, timeout, memory)
     command = [
         executable,
         "run",
         "--rm",
+        "--name",
+        "kestral-test-" + uuid.uuid4().hex,
         "--pull=missing",
         "--cap-drop=ALL",
         "--security-opt=no-new-privileges",
@@ -381,11 +424,28 @@ def run_tests_in_container(
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
+        # The Docker client timing out does not stop its container workload.
+        container_name = command[command.index("--name") + 1]
+        try:
+            cleanup = subprocess.run(
+                [executable, "rm", "--force", container_name],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                stdin=subprocess.DEVNULL,
+            )
+            cleanup_note = (
+                "Container cleanup requested"
+                if cleanup.returncode == 0
+                else "Container cleanup failed; operator inspection required"
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            cleanup_note = "Container cleanup failed; operator inspection required"
         return {
             "status": "error",
             "exit_code": None,
             "duration_s": round(time.monotonic() - started, 1),
-            "output_tail": f"Timed out after {timeout} s",
+            "output_tail": f"Timed out after {timeout} s. {cleanup_note}",
         }
     output = (completed.stdout or "") + (completed.stderr or "")
     if NO_TESTS in output:
@@ -404,3 +464,82 @@ def run_tests_in_container(
         "duration_s": round(time.monotonic() - started, 1),
         "output_tail": output[-TEST_OUTPUT_CHARS:],
     }
+
+
+def _run_staged_tests(executable, plan, project_dir, timeout, memory):
+    """Install with scripts disabled, then run reviewed tests with no network or host secrets."""
+    name = "kestral-test-" + uuid.uuid4().hex
+    volume = name + "-work"
+    started = time.monotonic()
+    logs = []
+    result = {"status": "error", "exit_code": None, "duration_s": 0, "output_tail": ""}
+    common = [
+        executable,
+        "run",
+        "--rm",
+        "--name",
+        name,
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--read-only",
+        f"--memory={memory}",
+        "--cpus=2",
+        "--pids-limit=256",
+        "--tmpfs=/tmp:rw,exec,size=1g",
+        "-e",
+        "HOME=/tmp",
+        "-v",
+        f"{volume}:/work",
+        "-w",
+        "/work",
+    ]
+    try:
+        subprocess.run(
+            [executable, "volume", "create", volume],
+            check=True,
+            capture_output=True,
+            timeout=30,
+            stdin=subprocess.DEVNULL,
+        )
+        for stage, script in (("INSTALL", plan.setup_script), ("BUILD/TEST", plan.script)):
+            limits = (
+                ["-v", f"{project_dir.resolve()}:/src:ro"]
+                if stage == "INSTALL"
+                else ["--network=none"]
+            )
+            remaining = max(1, timeout - int(time.monotonic() - started))
+            completed = subprocess.run(
+                [*common, *limits, plan.image, "sh", "-c", script],
+                capture_output=True,
+                text=True,
+                timeout=remaining,
+                stdin=subprocess.DEVNULL,
+            )
+            logs.append(
+                f"{stage}: exit {completed.returncode}\n{completed.stdout}{completed.stderr}"
+            )
+            result["exit_code"] = completed.returncode
+            if completed.returncode:
+                result["status"] = "error" if stage == "INSTALL" else "failed"
+                break
+        else:
+            result["status"] = "passed"
+    except subprocess.TimeoutExpired:
+        logs.append(f"Sandbox timed out after {timeout}s")
+    except (OSError, subprocess.CalledProcessError):
+        logs.append("Container setup failed")
+    finally:
+        for args in (("rm", "--force", name), ("volume", "rm", "--force", volume)):
+            try:
+                cleaned = subprocess.run(
+                    [executable, *args], capture_output=True, timeout=30, stdin=subprocess.DEVNULL
+                )
+                if args[0] == "volume" and cleaned.returncode:
+                    result["status"] = "error"
+                    logs.append(f"Cleanup failed; inspect Docker volume {volume}")
+            except (OSError, subprocess.TimeoutExpired):
+                result["status"] = "error"
+                logs.append(f"Cleanup failed; inspect Docker resource {name}")
+    result["duration_s"] = round(time.monotonic() - started, 1)
+    result["output_tail"] = "\n".join(logs)[-TEST_OUTPUT_CHARS:]
+    return result
