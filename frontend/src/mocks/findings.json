@@ -1,0 +1,298 @@
+{
+  "schema_version": "1.0",
+  "scan_id": "scan_sample",
+  "findings": [
+    {
+      "finding_id": "finding:sample0001",
+      "kind": "vulnerability",
+      "title": "SAMPLE-0001: Synthetic sample advisory for body-parser",
+      "subject_id": "cmp:4d5e6f",
+      "subject_label": "body-parser@1.20.2",
+      "advisory_ids": [
+        "SAMPLE-0001",
+        "SAMPLE-CVE-0001"
+      ],
+      "sources": [
+        {
+          "name": "Grype",
+          "record_id": "SAMPLE-0001",
+          "url": null,
+          "severity": "High",
+          "cvss_vectors": [],
+          "match_type": "exact-direct-match"
+        },
+        {
+          "name": "OSV",
+          "record_id": "SAMPLE-0001",
+          "url": null,
+          "severity": "HIGH",
+          "cvss_vectors": [],
+          "match_type": null
+        }
+      ],
+      "fixed_versions": [
+        "1.20.3"
+      ],
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/body-parser"
+        },
+        {
+          "path": "osv.json",
+          "kind": "osv-record",
+          "locator": "SAMPLE-0001"
+        },
+        {
+          "path": "grype.json",
+          "kind": "grype-match",
+          "locator": "SAMPLE-0001"
+        }
+      ],
+      "scope": "runtime",
+      "directness": "transitive",
+      "dependency_paths": [
+        [
+          "root:6d7e",
+          "cmp:1a2b3c",
+          "cmp:4d5e6f"
+        ]
+      ],
+      "affected_projects": [
+        "root:6d7e"
+      ],
+      "dependent_packages": 1,
+      "uncertainty": [
+        "Sample data: no CVE assigned; scored from the advisory's own CVSS vector",
+        "Not reachability-checked: the vulnerable code may never be called"
+      ],
+      "cves": [],
+      "cwes": [
+        {
+          "id": "CWE-400",
+          "url": "https://cwe.mitre.org/data/definitions/400.html",
+          "sources": [
+            "OSV"
+          ]
+        }
+      ],
+      "cvss": {
+        "version": "3.1",
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        "base_score": 7.5,
+        "severity": "HIGH",
+        "source": "OSV (SAMPLE-0001)",
+        "source_type": null,
+        "cve_id": null,
+        "computed": true,
+        "published_score": null,
+        "matches_published": null
+      },
+      "epss": null,
+      "priority": {
+        "score": 61,
+        "band": "high",
+        "method": "Kestral rule-based priority v1: 50% CVSS base score, 20% EPSS percentile, 20% exposure (direct/transitive, runtime/dev), 10% fix available. Not a vendor score.",
+        "factors": [
+          {
+            "name": "Severity (CVSS base score)",
+            "value": "CVSS 7.5 (OSV (SAMPLE-0001))",
+            "weight": 0.5,
+            "points": 37.5
+          },
+          {
+            "name": "Exploit likelihood (EPSS percentile)",
+            "value": "EPSS unavailable",
+            "weight": 0.2,
+            "points": 0
+          },
+          {
+            "name": "Exposure",
+            "value": "transitive runtime dependency",
+            "weight": 0.2,
+            "points": 14.0
+          },
+          {
+            "name": "Fix available (actionable now)",
+            "value": "fixed in 1.20.3",
+            "weight": 0.1,
+            "points": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "finding_id": "finding:sample0002",
+      "kind": "vulnerability",
+      "title": "SAMPLE-0002: Synthetic sample advisory for requests",
+      "subject_id": "cmp:6d7e8f",
+      "subject_label": "requests@2.31.0",
+      "advisory_ids": [
+        "SAMPLE-0002"
+      ],
+      "sources": [
+        {
+          "name": "OSV",
+          "record_id": "SAMPLE-0002",
+          "url": null,
+          "severity": "MODERATE",
+          "cvss_vectors": [],
+          "match_type": null
+        }
+      ],
+      "fixed_versions": [],
+      "evidence": [
+        {
+          "path": "requirements.txt",
+          "kind": "manifest",
+          "locator": "line 1"
+        },
+        {
+          "path": "osv.json",
+          "kind": "osv-record",
+          "locator": "SAMPLE-0002"
+        }
+      ],
+      "scope": "runtime",
+      "directness": "direct",
+      "dependency_paths": [
+        [
+          "root:py01",
+          "cmp:6d7e8f"
+        ]
+      ],
+      "affected_projects": [
+        "root:py01"
+      ],
+      "dependent_packages": 0,
+      "uncertainty": [
+        "Reported by OSV only; Grype found no match",
+        "Not reachability-checked: the vulnerable code may never be called"
+      ],
+      "priority": {
+        "score": 45,
+        "band": "medium",
+        "method": "Kestral rule-based priority v1: 50% CVSS base score, 20% EPSS percentile, 20% exposure (direct/transitive, runtime/dev), 10% fix available. Not a vendor score.",
+        "factors": [
+          {
+            "name": "Severity (CVSS base score)",
+            "value": "no CVSS available; assumed 5.0",
+            "weight": 0.5,
+            "points": 25.0
+          },
+          {
+            "name": "Exploit likelihood (EPSS percentile)",
+            "value": "EPSS unavailable",
+            "weight": 0.2,
+            "points": 0
+          },
+          {
+            "name": "Exposure",
+            "value": "direct runtime dependency",
+            "weight": 0.2,
+            "points": 20.0
+          },
+          {
+            "name": "Fix available (actionable now)",
+            "value": "no fixed version reported",
+            "weight": 0.1,
+            "points": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "finding_id": "finding:sample0003",
+      "kind": "workflow_pin",
+      "title": "actions/checkout: Pinned to mutable ref 'v4'",
+      "subject_id": null,
+      "subject_label": "actions/checkout",
+      "advisory_ids": [],
+      "sources": [
+        {
+          "name": "workflow-scan",
+          "record_id": ".github/workflows/ci.yml:12",
+          "url": null,
+          "severity": null,
+          "cvss_vectors": [],
+          "match_type": null
+        }
+      ],
+      "fixed_versions": [],
+      "evidence": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "kind": "ci-workflow",
+          "locator": "line 12: uses: actions/checkout@v4"
+        }
+      ],
+      "scope": null,
+      "directness": null,
+      "dependency_paths": [],
+      "affected_projects": [],
+      "dependent_packages": null,
+      "uncertainty": [
+        "A tag or branch can be moved to different code; only a full commit SHA is immutable",
+        "First-party GitHub action: lower risk, but still mutable"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "name": "OSV",
+      "status": "ok",
+      "tool_version": null,
+      "database_built": null,
+      "retrieved_at": "2026-11-24T00:00:00+00:00",
+      "queried": 6,
+      "raw_output": "osv.json",
+      "message": null
+    },
+    {
+      "name": "Grype",
+      "status": "ok",
+      "tool_version": "0.122.1",
+      "database_built": "2026-11-23T06:28:32Z",
+      "retrieved_at": null,
+      "queried": 6,
+      "raw_output": "grype.json",
+      "message": null
+    },
+    {
+      "name": "NVD",
+      "status": "skipped",
+      "tool_version": null,
+      "database_built": null,
+      "retrieved_at": null,
+      "queried": 0,
+      "raw_output": null,
+      "message": "No CVEs to look up"
+    },
+    {
+      "name": "workflow-scan",
+      "status": "ok",
+      "tool_version": null,
+      "database_built": null,
+      "retrieved_at": null,
+      "queried": 1,
+      "raw_output": null,
+      "message": null
+    }
+  ],
+  "stats": {
+    "vulnerabilities": 2,
+    "vulnerable_packages": 2,
+    "confirmed_by_both": 1,
+    "workflow_pins": 1,
+    "components_total": 6,
+    "components_assessed": 5,
+    "components_not_assessed": 1,
+    "cves_linked": 0,
+    "nvd_scored": 0
+  },
+  "partial": true,
+  "warnings": [
+    "1 package(s) not assessed: no exact version or unsupported ecosystem"
+  ]
+}

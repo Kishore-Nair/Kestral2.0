@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "scan_id": "scan_550e8400e29b41d4a716446655440000",
+  "roots": [
+    {
+      "root_id": "root:py",
+      "name": "demo-api",
+      "path": "",
+      "manifest_path": "requirements.txt",
+      "ecosystem": "pypi"
+    }
+  ],
+  "components": [
+    {
+      "component_id": "cmp:flask",
+      "name": "flask",
+      "version": "3.0.0",
+      "ecosystem": "pypi",
+      "purl": "pkg:pypi/flask@3.0.0",
+      "install_path": null,
+      "project_path": "",
+      "scope": "runtime",
+      "licenses": [],
+      "hashes": [],
+      "evidence": [
+        {
+          "path": "requirements.txt",
+          "kind": "manifest",
+          "locator": "line:1"
+        }
+      ],
+      "resolved": true
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "rel:py-flask",
+      "from_id": "root:py",
+      "to_id": "cmp:flask",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "requirements.txt",
+          "kind": "manifest",
+          "locator": "line:1"
+        }
+      ]
+    },
+    {
+      "relationship_id": "rel:py-requests",
+      "from_id": "root:py",
+      "to_id": null,
+      "unresolved_target": {
+        "name": "requests",
+        "specifier": ">=2",
+        "ecosystem": "pypi"
+      },
+      "resolution_status": "unresolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "requirements.txt",
+          "kind": "manifest",
+          "locator": "line:2"
+        }
+      ]
+    }
+  ],
+  "partial": false,
+  "warnings": [
+    "requirements.txt has no lockfile; transitive dependencies are unknown"
+  ]
+}

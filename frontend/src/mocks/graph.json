@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "schema_version": "1.0",
+    "scan_id": "scan_550e8400e29b41d4a716446655440000",
+    "partial": true,
+    "stats": { "applications": 1, "projects": 2, "packages": 6, "unresolved": 1, "depends_on_edges": 8, "max_depth": 3, "cycles": 0 },
+    "warnings": ["worker/requirements.txt has no lockfile; transitive Python dependencies were not established"]
+  },
+  "nodes": [
+    { "data": { "id": "app:root", "label": "fixture-app", "type": "application", "directness": "not_applicable", "depth": null } },
+    { "data": { "id": "root:6d7e", "label": "fixture-app (npm)", "type": "project", "directness": "not_applicable", "depth": 0, "project_path": "" } },
+    { "data": { "id": "root:py01", "label": "fixture-worker (pypi)", "type": "project", "directness": "not_applicable", "depth": 0, "project_path": "worker" } },
+    { "data": { "id": "cmp:1a2b3c", "label": "express", "type": "package", "name": "express", "version": "4.18.2", "ecosystem": "npm", "purl": "pkg:npm/express@4.18.2", "install_path": "node_modules/express", "directness": "direct", "depth": 1, "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages.node_modules/express" }] } },
+    { "data": { "id": "cmp:3a4b5c", "label": "jest", "type": "package", "name": "jest", "version": "29.7.0", "ecosystem": "npm", "purl": "pkg:npm/jest@29.7.0", "install_path": "node_modules/jest", "directness": "direct", "depth": 1, "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages.node_modules/jest" }] } },
+    { "data": { "id": "cmp:4d5e6f", "label": "body-parser", "type": "package", "name": "body-parser", "version": "1.20.1", "ecosystem": "npm", "purl": "pkg:npm/body-parser@1.20.1", "install_path": "node_modules/body-parser", "directness": "transitive", "depth": 2, "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages.node_modules/body-parser" }] } },
+    { "data": { "id": "cmp:7a8b9c", "label": "debug", "type": "package", "name": "debug", "version": "2.6.9", "ecosystem": "npm", "purl": "pkg:npm/debug@2.6.9", "install_path": "node_modules/debug", "directness": "transitive", "depth": 2, "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages.node_modules/debug" }] } },
+    { "data": { "id": "cmp:0d1e2f", "label": "ms", "type": "package", "name": "ms", "version": "2.0.0", "ecosystem": "npm", "purl": "pkg:npm/ms@2.0.0", "install_path": "node_modules/ms", "directness": "transitive", "depth": 3, "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages.node_modules/ms" }] } },
+    { "data": { "id": "cmp:6d7e8f", "label": "requests", "type": "package", "name": "requests", "version": "2.31.0", "ecosystem": "pypi", "purl": "pkg:pypi/requests@2.31.0", "install_path": null, "project_path": "worker", "directness": "direct", "depth": 1, "evidence": [{ "path": "worker/requirements.txt", "kind": "manifest", "locator": "line 1" }] } },
+    { "data": { "id": "unresolved:f1a5", "label": "flask >=2.0", "type": "unresolved", "directness": "direct", "depth": 1, "resolution_status": "unresolved", "unresolved_target": { "name": "flask", "specifier": ">=2.0", "ecosystem": "pypi" }, "evidence": [{ "path": "worker/requirements.txt", "kind": "manifest", "locator": "line 2" }] } }
+  ],
+  "edges": [
+    { "data": { "id": "edge:app-root", "source": "app:root", "target": "root:6d7e", "type": "CONTAINS" } },
+    { "data": { "id": "edge:app-py01", "source": "app:root", "target": "root:py01", "type": "CONTAINS" } },
+    { "data": { "id": "edge:9a8b7c", "source": "root:6d7e", "target": "cmp:1a2b3c", "type": "DEPENDS_ON", "resolution_status": "resolved", "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages[''].dependencies.express" }] } },
+    { "data": { "id": "edge:aa01", "source": "root:6d7e", "target": "cmp:3a4b5c", "type": "DEPENDS_ON", "resolution_status": "resolved", "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages[''].devDependencies.jest" }] } },
+    { "data": { "id": "edge:aa02", "source": "cmp:1a2b3c", "target": "cmp:4d5e6f", "type": "DEPENDS_ON", "resolution_status": "resolved", "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages.node_modules/express.dependencies.body-parser" }] } },
+    { "data": { "id": "edge:aa03", "source": "cmp:1a2b3c", "target": "cmp:7a8b9c", "type": "DEPENDS_ON", "resolution_status": "resolved", "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages.node_modules/express.dependencies.debug" }] } },
+    { "data": { "id": "edge:aa04", "source": "cmp:4d5e6f", "target": "cmp:7a8b9c", "type": "DEPENDS_ON", "resolution_status": "resolved", "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages.node_modules/body-parser.dependencies.debug" }] } },
+    { "data": { "id": "edge:aa05", "source": "cmp:7a8b9c", "target": "cmp:0d1e2f", "type": "DEPENDS_ON", "resolution_status": "resolved", "evidence": [{ "path": "package-lock.json", "kind": "lockfile", "locator": "packages.node_modules/debug.dependencies.ms" }] } },
+    { "data": { "id": "edge:aa06", "source": "root:py01", "target": "cmp:6d7e8f", "type": "DEPENDS_ON", "resolution_status": "resolved", "evidence": [{ "path": "worker/requirements.txt", "kind": "manifest", "locator": "line 1" }] } },
+    { "data": { "id": "edge:aa07", "source": "root:py01", "target": "unresolved:f1a5", "type": "DEPENDS_ON", "resolution_status": "unresolved", "evidence": [{ "path": "worker/requirements.txt", "kind": "manifest", "locator": "line 2" }] } }
+  ]
+}

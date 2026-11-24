@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "scan_id": "scan_550e8400e29b41d4a716446655440000",
+  "roots": [
+    {
+      "root_id": "root:demo",
+      "name": "demo-app",
+      "path": "",
+      "manifest_path": "package.json",
+      "ecosystem": "npm"
+    }
+  ],
+  "components": [
+    {
+      "component_id": "cmp:alpha",
+      "name": "alpha",
+      "version": "1.0.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/alpha@1.0.0",
+      "install_path": "node_modules/alpha",
+      "project_path": "",
+      "scope": "runtime",
+      "licenses": [],
+      "hashes": [],
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/alpha"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "component_id": "cmp:beta",
+      "name": "beta",
+      "version": "2.0.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/beta@2.0.0",
+      "install_path": "node_modules/beta",
+      "project_path": "",
+      "scope": "runtime",
+      "licenses": [],
+      "hashes": [],
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/beta"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "component_id": "cmp:gamma",
+      "name": "gamma",
+      "version": "3.0.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/gamma@3.0.0",
+      "install_path": "node_modules/gamma",
+      "project_path": "",
+      "scope": "runtime",
+      "licenses": [],
+      "hashes": [],
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/gamma"
+        }
+      ],
+      "resolved": true
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "rel:demo-alpha",
+      "from_id": "root:demo",
+      "to_id": "cmp:alpha",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages[''].dependencies.alpha"
+        }
+      ]
+    },
+    {
+      "relationship_id": "rel:demo-beta",
+      "from_id": "root:demo",
+      "to_id": "cmp:beta",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages[''].dependencies.beta"
+        }
+      ]
+    },
+    {
+      "relationship_id": "rel:alpha-gamma",
+      "from_id": "cmp:alpha",
+      "to_id": "cmp:gamma",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages['node_modules/alpha'].dependencies.gamma"
+        }
+      ]
+    },
+    {
+      "relationship_id": "rel:beta-gamma",
+      "from_id": "cmp:beta",
+      "to_id": "cmp:gamma",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages['node_modules/beta'].dependencies.gamma"
+        }
+      ]
+    }
+  ],
+  "partial": false,
+  "warnings": []
+}

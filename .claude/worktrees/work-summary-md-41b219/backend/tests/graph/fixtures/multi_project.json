@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "scan_id": "scan_550e8400e29b41d4a716446655440000",
+  "roots": [
+    {
+      "root_id": "root:web",
+      "name": "web",
+      "path": "web",
+      "manifest_path": "web/package.json",
+      "ecosystem": "npm"
+    },
+    {
+      "root_id": "root:api",
+      "name": "api",
+      "path": "api",
+      "manifest_path": "api/requirements.txt",
+      "ecosystem": "pypi"
+    }
+  ],
+  "components": [
+    {
+      "component_id": "cmp:alpha",
+      "name": "alpha",
+      "version": "1.0.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/alpha@1.0.0",
+      "install_path": "web/node_modules/alpha",
+      "project_path": "web",
+      "scope": "runtime",
+      "licenses": [],
+      "hashes": [],
+      "evidence": [
+        {
+          "path": "web/package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.web/node_modules/alpha"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "component_id": "cmp:beta",
+      "name": "beta",
+      "version": "2.0.0",
+      "ecosystem": "pypi",
+      "purl": "pkg:pypi/beta@2.0.0",
+      "install_path": null,
+      "project_path": "api",
+      "scope": "runtime",
+      "licenses": [],
+      "hashes": [],
+      "evidence": [
+        {
+          "path": "api/requirements.txt",
+          "kind": "manifest",
+          "locator": "line:1"
+        }
+      ],
+      "resolved": true
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "rel:web-alpha",
+      "from_id": "root:web",
+      "to_id": "cmp:alpha",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "web/package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages[''].dependencies.alpha"
+        }
+      ]
+    },
+    {
+      "relationship_id": "rel:api-beta",
+      "from_id": "root:api",
+      "to_id": "cmp:beta",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "api/requirements.txt",
+          "kind": "manifest",
+          "locator": "line:1"
+        }
+      ]
+    }
+  ],
+  "partial": false,
+  "warnings": []
+}

@@ -1,0 +1,1 @@
+Benign repository discovery fixture.

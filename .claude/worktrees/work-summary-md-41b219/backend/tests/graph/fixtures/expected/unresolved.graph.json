@@ -1,0 +1,126 @@
+{
+  "meta": {
+    "schema_version": "1.0",
+    "scan_id": "scan_550e8400e29b41d4a716446655440000",
+    "partial": false,
+    "stats": {
+      "applications": 1,
+      "projects": 1,
+      "packages": 1,
+      "unresolved": 1,
+      "depends_on_edges": 2,
+      "max_depth": 1,
+      "cycles": 0
+    },
+    "warnings": [
+      "requirements.txt has no lockfile; transitive dependencies are unknown"
+    ]
+  },
+  "nodes": [
+    {
+      "data": {
+        "id": "app:root",
+        "label": "demo-app",
+        "type": "application",
+        "directness": "not_applicable",
+        "depth": null
+      }
+    },
+    {
+      "data": {
+        "id": "cmp:flask",
+        "label": "flask",
+        "type": "package",
+        "directness": "direct",
+        "depth": 1,
+        "name": "flask",
+        "version": "3.0.0",
+        "ecosystem": "pypi",
+        "purl": "pkg:pypi/flask@3.0.0",
+        "project_path": "",
+        "install_path": null,
+        "evidence": [
+          {
+            "path": "requirements.txt",
+            "kind": "manifest",
+            "locator": "line:1"
+          }
+        ]
+      }
+    },
+    {
+      "data": {
+        "id": "root:py",
+        "label": "demo-api (pypi)",
+        "type": "project",
+        "directness": "not_applicable",
+        "depth": 0,
+        "project_path": ""
+      }
+    },
+    {
+      "data": {
+        "id": "unresolved:1cac157b1df20403",
+        "label": "requests >=2",
+        "type": "unresolved",
+        "directness": "direct",
+        "depth": 1,
+        "unresolved_target": {
+          "name": "requests",
+          "specifier": ">=2",
+          "ecosystem": "pypi"
+        },
+        "resolution_status": "unresolved",
+        "evidence": [
+          {
+            "path": "requirements.txt",
+            "kind": "manifest",
+            "locator": "line:2"
+          }
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "data": {
+        "id": "edge:f9638eb4e1dce92e",
+        "source": "app:root",
+        "target": "root:py",
+        "type": "CONTAINS"
+      }
+    },
+    {
+      "data": {
+        "id": "edge:77abddfbc182f226",
+        "source": "root:py",
+        "target": "cmp:flask",
+        "type": "DEPENDS_ON",
+        "resolution_status": "resolved",
+        "evidence": [
+          {
+            "path": "requirements.txt",
+            "kind": "manifest",
+            "locator": "line:1"
+          }
+        ]
+      }
+    },
+    {
+      "data": {
+        "id": "edge:a6be37b75908ba33",
+        "source": "root:py",
+        "target": "unresolved:1cac157b1df20403",
+        "type": "DEPENDS_ON",
+        "resolution_status": "unresolved",
+        "evidence": [
+          {
+            "path": "requirements.txt",
+            "kind": "manifest",
+            "locator": "line:2"
+          }
+        ]
+      }
+    }
+  ]
+}

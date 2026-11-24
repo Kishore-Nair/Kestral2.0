@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "scan_id": "scan_550e8400e29b41d4a716446655440000",
+  "status": "COMPLETED",
+  "current_stage": "BUILDING_GRAPH",
+  "repository": {
+    "url": "https://github.com/example/fixture-app",
+    "owner": "example",
+    "name": "fixture-app",
+    "requested_ref": "main",
+    "resolved_ref": "main",
+    "commit_sha": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "created_at": "2026-11-23T10:00:00Z",
+  "started_at": "2026-11-23T10:00:01Z",
+  "finished_at": "2026-11-23T10:00:08Z",
+  "error": null,
+  "warnings": []
+}
+

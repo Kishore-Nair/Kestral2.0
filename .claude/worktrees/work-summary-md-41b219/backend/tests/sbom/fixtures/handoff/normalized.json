@@ -1,0 +1,216 @@
+{
+  "schema_version": "1.0",
+  "scan_id": "scan_550e8400e29b41d4a716446655440000",
+  "roots": [
+    {
+      "root_id": "root:0afccae1bc4cc5a0ac6ed70f",
+      "name": "demo-app",
+      "path": "",
+      "manifest_path": "package.json",
+      "ecosystem": "npm"
+    }
+  ],
+  "components": [
+    {
+      "component_id": "cmp:04371317962d49d86ee89750",
+      "name": "beta",
+      "version": "2.0.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/beta@2.0.0",
+      "install_path": "node_modules/beta",
+      "project_path": "",
+      "scope": "runtime",
+      "licenses": [
+        {
+          "id": "MIT",
+          "name": null,
+          "url": null
+        }
+      ],
+      "hashes": [],
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/beta"
+        },
+        {
+          "path": "sbom.cdx.json",
+          "kind": "syft-sbom",
+          "locator": "components[1]"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "component_id": "cmp:96174c4c8231fdaea25f056f",
+      "name": "devtool",
+      "version": "0.5.1",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/devtool@0.5.1",
+      "install_path": "node_modules/devtool",
+      "project_path": "",
+      "scope": "dev",
+      "licenses": [
+        {
+          "id": "MIT",
+          "name": null,
+          "url": null
+        }
+      ],
+      "hashes": [],
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/devtool"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "component_id": "cmp:c2e59c087a257e91c201975f",
+      "name": "nested",
+      "version": "3.0.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/nested@3.0.0",
+      "install_path": "node_modules/alpha/node_modules/nested",
+      "project_path": "",
+      "scope": "runtime",
+      "licenses": [
+        {
+          "id": "ISC",
+          "name": null,
+          "url": null
+        }
+      ],
+      "hashes": [],
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/alpha/node_modules/nested"
+        },
+        {
+          "path": "sbom.cdx.json",
+          "kind": "syft-sbom",
+          "locator": "components[3]"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "component_id": "cmp:f13b0882cd795ae519ed0506",
+      "name": "alpha",
+      "version": "1.0.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/alpha@1.0.0",
+      "install_path": "node_modules/alpha",
+      "project_path": "",
+      "scope": "runtime",
+      "licenses": [
+        {
+          "id": "MIT",
+          "name": null,
+          "url": null
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "0ecb89bee779cdd8d5c4f58398dad95fb55dee9794ea85cfa721d5acf934007cb6a37d80938ef19bc834c7ae9a6187708f8ed52a9a3ae3c50a9a533c731353c8"
+        }
+      ],
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/alpha"
+        },
+        {
+          "path": "sbom.cdx.json",
+          "kind": "syft-sbom",
+          "locator": "components[0]"
+        }
+      ],
+      "resolved": true
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "rel:80fa3941d72bad7f506afb5e",
+      "from_id": "cmp:f13b0882cd795ae519ed0506",
+      "to_id": "cmp:c2e59c087a257e91c201975f",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/alpha.dependencies.nested"
+        }
+      ]
+    },
+    {
+      "relationship_id": "rel:9dfb28f547e849eef4467783",
+      "from_id": "root:0afccae1bc4cc5a0ac6ed70f",
+      "to_id": "cmp:96174c4c8231fdaea25f056f",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages[''].devDependencies.devtool"
+        },
+        {
+          "path": "package.json",
+          "kind": "manifest",
+          "locator": "devDependencies.devtool"
+        }
+      ]
+    },
+    {
+      "relationship_id": "rel:dbc5cc29ce5b95403452f1db",
+      "from_id": "root:0afccae1bc4cc5a0ac6ed70f",
+      "to_id": "cmp:f13b0882cd795ae519ed0506",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages[''].dependencies.alpha"
+        },
+        {
+          "path": "package.json",
+          "kind": "manifest",
+          "locator": "dependencies.alpha"
+        }
+      ]
+    },
+    {
+      "relationship_id": "rel:ed314a8602abe1047afc4855",
+      "from_id": "cmp:f13b0882cd795ae519ed0506",
+      "to_id": "cmp:04371317962d49d86ee89750",
+      "unresolved_target": null,
+      "resolution_status": "resolved",
+      "type": "DEPENDS_ON",
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/alpha.dependencies.beta"
+        }
+      ]
+    }
+  ],
+  "partial": false,
+  "warnings": [
+    "3 Syft dependency references were not used because lockfile relationships are authoritative for those packages",
+    "SBOM coverage discrepancy: 1 lockfile/manifest components were not reported by Syft (kept, with their own evidence)"
+  ]
+}
