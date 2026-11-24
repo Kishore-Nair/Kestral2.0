@@ -8,6 +8,7 @@ function makeService(createScan: ScanApi["createScan"]): ScanApi {
   return {
     createScan,
     getScan: vi.fn(), getInventory: vi.fn(), getSbom: vi.fn(), getGraph: vi.fn(), getFindings: vi.fn(),
+    getRemediations: vi.fn(), decideRemediation: vi.fn(),
   };
 }
 

@@ -17,6 +17,7 @@ import WarningsNotice from "@/components/WarningsNotice";
 import { useScan, type ArtifactState } from "@/hooks/useScan";
 import { USE_MOCKS } from "@/services/scanService";
 import type { GraphStats } from "@/types/graph";
+import RemediationPanel from "@/components/remediation/RemediationPanel";
 
 function ArtifactPanel<T>({
   state, label, onRetry, children,
@@ -173,6 +174,7 @@ export default function Home() {
             )}
           </div>
         )}
+        {scan?.status === "COMPLETED" && <RemediationPanel scanId={scan.scan_id} />}
       </main>
     </div>
   );

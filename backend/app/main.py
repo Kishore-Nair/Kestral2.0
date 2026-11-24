@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.errors import register_exception_handlers
+from app.api.routes.remediations import router as remediations_router
 from app.api.routes.scans import router as scans_router
 from app.config import settings
 from app.database.scans import reconcile_interrupted_scans
@@ -43,6 +44,7 @@ app.add_middleware(
 )
 register_exception_handlers(app)
 app.include_router(scans_router, prefix="/api/v1")
+app.include_router(remediations_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health", tags=["health"])
