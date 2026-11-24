@@ -1,6 +1,6 @@
 # Live NodeGoat sandbox pipeline
 
-Branch: `feat/sandbox-testing`. This is a real scan and sandbox validation, not generated demo findings.
+This is a real scan and sandbox validation on the integrated application, not generated demo findings.
 
 ## Presenting the running application
 
