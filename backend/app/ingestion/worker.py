@@ -13,6 +13,7 @@ from app.database.scans import (
     finish_completed,
     finish_failed,
     load_scan,
+    previous_completed_scan,
     record_artifact,
     record_commit_info,
     set_stage,
@@ -35,6 +36,7 @@ from app.ingestion.workspace import (
     enforce_workspace_limits,
     remove_scan_workspace,
 )
+from app.risk.changes import Baseline
 from app.risk.nvd import NvdClient
 from app.schemas.scan import ScanStatus
 
@@ -80,6 +82,19 @@ def _nvd_client() -> NvdClient | None:
         api_key=key,
         timeout=settings.nvd_timeout_seconds,
         cache_days=settings.nvd_cache_days,
+    )
+
+
+def _baseline(db, row, output_root) -> Baseline | None:
+    previous = previous_completed_scan(db, row)
+    if previous is None:
+        return None
+    return Baseline(
+        scan_id=previous.scan_id,
+        directory=output_root / previous.scan_id,
+        commit_sha=previous.commit_sha,
+        resolved_ref=previous.resolved_ref,
+        finished_at=previous.finished_at.isoformat() if previous.finished_at else None,
     )
 
 
@@ -197,6 +212,8 @@ def run_scan(scan_id: str) -> None:
                 grype_timeout=settings.grype_timeout_seconds,
                 nvd_client=_nvd_client(),
                 nvd_budget=settings.nvd_budget_seconds,
+                baseline=_baseline(db, row, directories.output.parent),
+                current_commit=metadata.commit_sha,
             )
             _validate_stage_scan_id(findings.scan_id, scan_id, "Risk analysis")
             save_validated_json(

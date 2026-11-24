@@ -7,12 +7,18 @@ import type { Finding, FindingsDocument } from "@/types/findings";
 import GraphShell from "@/components/graph/GraphShell";
 import FindingsPanel from "@/components/risk/FindingsPanel";
 import {
+  categoryLabel,
   filterFindings,
   findingsByNode,
   highestReportedSeverity,
   sortFindings,
   sourceAgreement,
 } from "@/lib/findings";
+
+vi.mock("@/services/aiApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/services/aiApi")>();
+  return { ...actual, aiService: actual.mockAiApi };
+});
 
 vi.mock("next/dynamic", () => ({
   default: () =>
@@ -37,7 +43,7 @@ beforeAll(() => {
 
 const doc = findingsFixture as FindingsDocument;
 const graph = graphFixture as GraphDocument;
-const [bodyParser, requests, pin] = doc.findings as Finding[];
+const [bodyParser, requests, pin, script] = doc.findings as Finding[];
 
 describe("findings helpers", () => {
   it("labels source agreement without voting", () => {
@@ -69,7 +75,52 @@ describe("findings helpers", () => {
   });
 });
 
+describe("suspicious-change helpers", () => {
+  it("labels, sorts and searches suspicious findings", () => {
+    expect(sourceAgreement(script)).toBe("Repository files");
+    expect(categoryLabel(script.category)).toBe("Install script");
+    expect(filterFindings(doc.findings, "suspicious", "install script")).toEqual([script]);
+    const high = { ...script, finding_id: "finding:high", risk_level: "high" as const };
+    expect(sortFindings([script, high]).map((f) => f.finding_id)).toEqual(["finding:high", script.finding_id]);
+  });
+});
+
 describe("FindingsPanel", () => {
+  it("shows suspicious changes with risk level, evidence and the scan comparison", () => {
+    const onShow = vi.fn();
+    render(<FindingsPanel findings={doc} labelFor={(id) => `label:${id}`} onShowInGraph={onShow} />);
+    fireEvent.click(screen.getByRole("tab", { name: /Suspicious changes \(1\)/ }));
+    const changes = screen.getByRole("region", { name: "Changes since last scan" });
+    expect(within(changes).getByText(/1 added · 0 removed · 0 upgraded · 1 downgraded/)).toBeInTheDocument();
+    expect(within(changes).getByText("package-lock.json")).toBeInTheDocument();
+    expect(screen.getByText("Install script")).toBeInTheDocument();
+    expect(screen.getAllByText("Risk low").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /runs an install script/ }));
+    expect(screen.getByText("Initial risk level")).toBeInTheDocument();
+    expect(screen.getByText("packages.node_modules/jest hasInstallScript")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show in graph" }));
+    expect(onShow).toHaveBeenCalledWith(script, ["root:6d7e", "cmp:3a4b5c"]);
+  });
+
+  it("shows extraction-gap caveats instead of hiding them", () => {
+    const changes = {
+      ...doc.changes!,
+      totals: { ...doc.changes!.totals, excluded: 808 },
+      caveats: ["package-lock.json: no packages were extracted from it in the earlier scan"],
+    };
+    render(<FindingsPanel findings={{ ...doc, changes }} labelFor={(id) => id} onShowInGraph={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: /Suspicious changes/ }));
+    expect(screen.getByText(/808 left out \(extraction gap\)/)).toBeInTheDocument();
+    expect(screen.getByText(/no packages were extracted from it in the earlier scan/)).toBeInTheDocument();
+  });
+
+  it("says when there is no earlier scan to compare with", () => {
+    render(<FindingsPanel findings={{ ...doc, changes: null }} labelFor={(id) => id} onShowInGraph={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: /Suspicious changes/ }));
+    expect(screen.getByText(/No earlier scan of this repository to compare with/)).toBeInTheDocument();
+  });
+
   it("shows stats, sources, warnings, evidence, paths and uncertainty", () => {
     const onShow = vi.fn();
     render(<FindingsPanel findings={doc} labelFor={(id) => `label:${id}`} onShowInGraph={onShow} />);

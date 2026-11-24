@@ -252,14 +252,17 @@ def test_analyzer_combines_sources_and_writes_evidence(tmp_path: Path) -> None:
         "components_not_assessed": 2,
         "cves_linked": 0,
         "nvd_scored": 0,
+        "suspicious": 0,
     }
     assert [(s.name, s.status) for s in result.sources] == [
         ("OSV", "ok"),
         ("Grype", "ok"),
         ("NVD", "skipped"),
         ("workflow-scan", "ok"),
+        ("supply-chain-scan", "ok"),
+        ("scan-diff", "skipped"),
     ]
-    assert {p.name for p in out.iterdir()} == {"osv.json", "grype.json"}
+    assert {p.name for p in out.iterdir()} == {"osv.json", "grype.json", "supply_chain.json"}
     assert result.partial  # two packages could not be assessed
     assert "2 package(s) not assessed: no exact version or unsupported ecosystem" in result.warnings
 

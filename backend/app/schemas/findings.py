@@ -7,8 +7,9 @@ from pydantic import Field, model_validator
 from app.schemas.base import StrictModel
 from app.schemas.inventory import Evidence
 
-FindingKind = Literal["vulnerability", "workflow_pin"]
-SourceName = Literal["OSV", "Grype", "NVD", "workflow-scan"]
+FindingKind = Literal["vulnerability", "workflow_pin", "suspicious"]
+SourceName = Literal["OSV", "Grype", "NVD", "workflow-scan", "supply-chain-scan", "scan-diff"]
+RiskLevel = Literal["high", "medium", "low"]
 Directness = Literal["direct", "transitive", "unknown"]
 
 
@@ -102,6 +103,10 @@ class Finding(StrictModel):
     cvss: CvssScore | None = None
     epss: EpssScore | None = None
     priority: Priority | None = None
+    # Non-CVE findings: what kind of anomaly, and a rule-based initial risk level with its reason.
+    category: str | None = None
+    risk_level: RiskLevel | None = None
+    risk_reason: str | None = None
 
     @model_validator(mode="after")
     def vulnerability_has_subject(self) -> "Finding":
@@ -133,6 +138,45 @@ class FindingStats(StrictModel):
     components_not_assessed: int = Field(ge=0)
     cves_linked: int = Field(default=0, ge=0)
     nvd_scored: int = Field(default=0, ge=0)
+    suspicious: int = Field(default=0, ge=0)
+
+
+class PackageChange(StrictModel):
+    ecosystem: str
+    name: str
+    project_path: str
+    from_versions: list[str]
+    to_versions: list[str]
+    component_id: str | None = None
+
+
+class FileChange(StrictModel):
+    path: str
+    change: Literal["added", "removed", "modified"]
+
+
+class ChangeSummary(StrictModel):
+    """What changed since the previous completed scan of the same repository."""
+
+    baseline_scan_id: str
+    baseline_commit: str | None
+    baseline_ref: str | None
+    baseline_finished_at: str | None
+    current_commit: str | None
+    same_commit: bool
+    added: list[PackageChange]
+    removed: list[PackageChange]
+    upgraded: list[PackageChange]
+    downgraded: list[PackageChange]
+    other_changes: list[PackageChange]
+    totals: dict[str, int]
+    files_compared: bool
+    files_changed: list[FileChange]
+    truncated: bool
+    # Lockfiles whose packages were extracted in only one of the two scans; their packages
+    # are left out of added/removed (counted in totals["excluded"]) with a caveat each.
+    extraction_gaps: list[str] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
 
 
 class FindingsDocument(StrictModel):
@@ -143,3 +187,4 @@ class FindingsDocument(StrictModel):
     stats: FindingStats
     partial: bool
     warnings: list[str]
+    changes: ChangeSummary | None = None

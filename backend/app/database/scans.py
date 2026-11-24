@@ -169,3 +169,18 @@ def active_scan_count(db: Session) -> int:
     )
     return len(rows.all())
 
+
+
+def previous_completed_scan(db: Session, row: Scan) -> Scan | None:
+    """Most recently finished completed scan of the same repository, for change comparison."""
+    return db.scalars(
+        select(Scan)
+        .where(
+            Scan.repository_url == row.repository_url,
+            Scan.status == ScanStatus.COMPLETED.value,
+            Scan.scan_id != row.scan_id,
+            Scan.normalized_path.is_not(None),
+        )
+        .order_by(Scan.finished_at.desc())
+        .limit(1)
+    ).first()

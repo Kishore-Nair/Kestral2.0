@@ -22,7 +22,7 @@ def _is_workflow(path: str) -> bool:
     return path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml"))
 
 
-def _read_text(repo_dir: Path, relative: str) -> str | None:
+def _read_text(repo_dir: Path, relative: str, max_bytes: int = MAX_WORKFLOW_BYTES) -> str | None:
     candidate = repo_dir / relative
     try:
         resolved = candidate.resolve()
@@ -31,7 +31,7 @@ def _read_text(repo_dir: Path, relative: str) -> str | None:
         return None
     if candidate.is_symlink() or not resolved.is_file():
         return None
-    if resolved.stat().st_size > MAX_WORKFLOW_BYTES:
+    if resolved.stat().st_size > max_bytes:
         return None
     try:
         return resolved.read_text(encoding="utf-8")

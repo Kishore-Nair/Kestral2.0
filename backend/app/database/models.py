@@ -38,3 +38,28 @@ class Scan(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+
+
+class AiAnalysisRow(Base):
+    """One AI investigation of one finding. Kept apart from scan status and artifacts."""
+
+    __tablename__ = "ai_analyses"
+
+    analysis_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scan_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    finding_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    commit_sha: Mapped[str | None] = mapped_column(String(64))
+    cache_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    result_json: Mapped[dict | None] = mapped_column(JSON)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    decision: Mapped[str | None] = mapped_column(String(20))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

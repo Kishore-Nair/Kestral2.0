@@ -1,8 +1,9 @@
 // Mirrors backend app/schemas/findings.py (findings.json v1.0, Phase 1B risk analysis).
 import type { Evidence } from "@/types/graph";
 
-export type FindingKind = "vulnerability" | "workflow_pin";
-export type SourceName = "OSV" | "Grype" | "NVD" | "workflow-scan";
+export type FindingKind = "vulnerability" | "workflow_pin" | "suspicious";
+export type SourceName = "OSV" | "Grype" | "NVD" | "workflow-scan" | "supply-chain-scan" | "scan-diff";
+export type RiskLevel = "high" | "medium" | "low";
 
 export interface FindingSource {
   name: SourceName;
@@ -87,6 +88,10 @@ export interface Finding {
   cvss?: CvssScore | null;
   epss?: EpssScore | null;
   priority?: Priority | null;
+  // Non-CVE (suspicious) findings: anomaly category and rule-based initial risk level.
+  category?: string | null;
+  risk_level?: RiskLevel | null;
+  risk_reason?: string | null;
 }
 
 export interface SourceRun {
@@ -110,6 +115,36 @@ export interface FindingStats {
   components_not_assessed: number;
   cves_linked?: number;
   nvd_scored?: number;
+  suspicious?: number;
+}
+
+export interface PackageChange {
+  ecosystem: string;
+  name: string;
+  project_path: string;
+  from_versions: string[];
+  to_versions: string[];
+  component_id: string | null;
+}
+
+export interface ChangeSummary {
+  baseline_scan_id: string;
+  baseline_commit: string | null;
+  baseline_ref: string | null;
+  baseline_finished_at: string | null;
+  current_commit: string | null;
+  same_commit: boolean;
+  added: PackageChange[];
+  removed: PackageChange[];
+  upgraded: PackageChange[];
+  downgraded: PackageChange[];
+  other_changes: PackageChange[];
+  totals: Record<string, number>;
+  files_compared: boolean;
+  files_changed: Array<{ path: string; change: "added" | "removed" | "modified" }>;
+  truncated: boolean;
+  extraction_gaps?: string[];
+  caveats?: string[];
 }
 
 export interface FindingsDocument {
@@ -120,4 +155,5 @@ export interface FindingsDocument {
   stats: FindingStats;
   partial: boolean;
   warnings: string[];
+  changes?: ChangeSummary | null;
 }

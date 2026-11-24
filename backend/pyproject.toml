@@ -18,6 +18,7 @@ dependencies = [
   "networkx>=3.3,<4",
   "packaging>=24,<27",
   "packageurl-python>=0.16,<2",
+  "anthropic>=2.13,<3",
 ]
 
 [project.optional-dependencies]

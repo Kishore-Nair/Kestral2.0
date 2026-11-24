@@ -1,14 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, ExternalLink, FileText, Route, Search, ShieldAlert } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, ExternalLink, FileText, GitCompare, Route, Search, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import WarningsNotice from "@/components/WarningsNotice";
-import { filterFindings, highestReportedSeverity, sortFindings, sourceAgreement } from "@/lib/findings";
+import AiAnalysisPanel from "@/components/risk/AiAnalysisPanel";
+import { aiService, type AiApi } from "@/services/aiApi";
+import type { AiStatus } from "@/types/ai";
+import { categoryLabel, filterFindings, highestReportedSeverity, sortFindings, sourceAgreement } from "@/lib/findings";
 import { cn } from "@/lib/utils";
-import type { Finding, FindingKind, FindingsDocument, Priority, SourceRun } from "@/types/findings";
+import type {
+  ChangeSummary, Finding, FindingKind, FindingsDocument, PackageChange, Priority, RiskLevel, SourceRun,
+} from "@/types/findings";
 
 const PAGE_SIZE = 25;
 
@@ -17,6 +22,14 @@ interface Props {
   labelFor: (id: string) => string;
   /** Select the finding's package in the graph and highlight one dependency path. */
   onShowInGraph: (finding: Finding, path: string[] | null) => void;
+  /** AI analyst client; defaults to the configured service (mock mode reports AI unavailable). */
+  ai?: AiApi;
+}
+
+interface AiProps {
+  scanId: string;
+  aiStatus: AiStatus | null;
+  ai: AiApi;
 }
 
 function formatDate(value: string | null): string | null {
@@ -25,8 +38,14 @@ function formatDate(value: string | null): string | null {
   return Number.isNaN(date.getTime()) ? value : date.toISOString().slice(0, 10);
 }
 
+const SOURCE_LABEL: Partial<Record<SourceRun["name"], string>> = {
+  "workflow-scan": "Workflow scan",
+  "supply-chain-scan": "Supply-chain checks",
+  "scan-diff": "Change comparison",
+};
+
 function SourceStatus({ run }: { run: SourceRun }) {
-  const label = run.name === "workflow-scan" ? "Workflow scan" : run.name;
+  const label = SOURCE_LABEL[run.name] ?? run.name;
   const detail =
     run.status === "ok"
       ? [
@@ -64,6 +83,107 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
     <Badge className={cn("tabular-nums", BAND_STYLE[priority.band])}>
       Priority {priority.score} · {priority.band}
     </Badge>
+  );
+}
+
+const RISK_STYLE: Record<RiskLevel, string> = {
+  high: "border-transparent bg-rose-700 text-white",
+  medium: "border-amber-600/50 bg-amber-100 text-amber-900",
+  low: "border-slate-300 bg-slate-100 text-slate-700",
+};
+
+export function RiskBadge({ level }: { level: RiskLevel }) {
+  return <Badge className={RISK_STYLE[level]}>Risk {level}</Badge>;
+}
+
+function shortSha(sha: string | null): string {
+  return sha ? sha.slice(0, 12) : "unknown commit";
+}
+
+function versions(change: PackageChange): string {
+  const from = change.from_versions.join(", ");
+  const to = change.to_versions.join(", ");
+  if (!from) return to;
+  if (!to) return from;
+  return `${from} → ${to}`;
+}
+
+function ChangeList({ title, items, total }: { title: string; items: PackageChange[]; total: number }) {
+  if (total === 0) return null;
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer font-medium">
+        {title} ({total})
+      </summary>
+      <ul className="mt-1 grid gap-0.5 pl-4">
+        {items.slice(0, 50).map((c) => (
+          <li key={`${c.ecosystem}:${c.project_path}:${c.name}`}>
+            <code>{c.name}</code> <span className="text-muted-foreground">{versions(c)}</span>
+          </li>
+        ))}
+        {total > Math.min(items.length, 50) && (
+          <li className="text-muted-foreground">…and {total - Math.min(items.length, 50)} more (see changes.json)</li>
+        )}
+      </ul>
+    </details>
+  );
+}
+
+/** What changed since the previous completed scan of this repository. */
+function ChangesSection({ changes }: { changes: ChangeSummary | null | undefined }) {
+  if (!changes) {
+    return (
+      <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+        <GitCompare className="mr-1 inline size-3.5" aria-hidden />
+        No earlier scan of this repository to compare with. Scan it again after a change to see what changed.
+      </p>
+    );
+  }
+  const t = changes.totals;
+  const finished = formatDate(changes.baseline_finished_at);
+  return (
+    <section aria-label="Changes since last scan" className="grid gap-1.5 rounded-md border px-3 py-2 text-xs">
+      <h3 className="flex items-center gap-1.5 text-sm font-medium">
+        <GitCompare className="size-4" aria-hidden /> What changed since the last scan
+      </h3>
+      <p className="text-muted-foreground">
+        Compared with <code>{changes.baseline_scan_id}</code> (commit <code>{shortSha(changes.baseline_commit)}</code>
+        {changes.baseline_ref ? ` on ${changes.baseline_ref}` : ""}{finished ? `, scanned ${finished}` : ""}) →
+        now <code>{shortSha(changes.current_commit)}</code>
+        {changes.same_commit ? " (same commit)" : ""}.
+      </p>
+      <p className="tabular-nums">
+        {t.added ?? 0} added · {t.removed ?? 0} removed · {t.upgraded ?? 0} upgraded · {t.downgraded ?? 0} downgraded
+        {t.other_changes ? ` · ${t.other_changes} other version changes` : ""}
+        {t.excluded ? ` · ${t.excluded} left out (extraction gap)` : ""}
+      </p>
+      {(changes.caveats ?? []).length > 0 && (
+        <ul className="list-disc space-y-0.5 pl-5 text-amber-800 dark:text-amber-300">
+          {(changes.caveats ?? []).map((c) => <li key={c}>{c}</li>)}
+        </ul>
+      )}
+      {changes.files_compared ? (
+        changes.files_changed.length > 0 ? (
+          <p>
+            Files changed:{" "}
+            {changes.files_changed.map((f) => (
+              <span key={f.path} className="mr-2">
+                <code>{f.path}</code> <span className="text-muted-foreground">({f.change})</span>
+              </span>
+            ))}
+          </p>
+        ) : (
+          <p className="text-muted-foreground">No manifest, lockfile, container or CI file changed.</p>
+        )
+      ) : (
+        <p className="text-muted-foreground">File-level changes not compared: the earlier scan predates file snapshots.</p>
+      )}
+      <ChangeList title="Added" items={changes.added} total={t.added ?? 0} />
+      <ChangeList title="Removed" items={changes.removed} total={t.removed ?? 0} />
+      <ChangeList title="Downgraded" items={changes.downgraded} total={t.downgraded ?? 0} />
+      <ChangeList title="Upgraded" items={changes.upgraded} total={t.upgraded ?? 0} />
+      <ChangeList title="Other version changes" items={changes.other_changes} total={t.other_changes ?? 0} />
+    </section>
   );
 }
 
@@ -191,12 +311,21 @@ function StatTile({ label, value }: { label: string; value: string | number }) {
 }
 
 function FindingDetails({
-  finding, labelFor, onShowInGraph,
-}: { finding: Finding; labelFor: Props["labelFor"]; onShowInGraph: Props["onShowInGraph"] }) {
+  finding, labelFor, onShowInGraph, aiProps,
+}: { finding: Finding; labelFor: Props["labelFor"]; onShowInGraph: Props["onShowInGraph"]; aiProps: AiProps }) {
   const isVuln = finding.kind === "vulnerability";
   return (
     <div className="grid gap-3 border-t bg-muted/30 px-3 py-3 text-xs">
       {isVuln && <ScoreSection finding={finding} />}
+      {finding.risk_level && (
+        <section className="grid gap-1">
+          <h4 className="font-medium text-muted-foreground uppercase">Initial risk level</h4>
+          <p>
+            <RiskBadge level={finding.risk_level} /> <span className="ml-1">{finding.risk_reason}</span>
+          </p>
+          <p className="text-muted-foreground">Rule-based rating by Kestral from the evidence below; not proof of malice.</p>
+        </section>
+      )}
       {isVuln && <CveCweSection finding={finding} />}
       {isVuln && (
         <section className="grid gap-1">
@@ -225,7 +354,7 @@ function FindingDetails({
         </section>
       )}
 
-      {isVuln && (
+      {(isVuln || finding.subject_id) && (
         <section className="grid gap-1">
           <h4 className="font-medium text-muted-foreground uppercase">How it gets in</h4>
           {finding.dependency_paths.length === 0 ? (
@@ -272,15 +401,22 @@ function FindingDetails({
           </ul>
         </section>
       )}
+
+      <AiAnalysisPanel
+        scanId={aiProps.scanId}
+        findingId={finding.finding_id}
+        status={aiProps.aiStatus}
+        client={aiProps.ai}
+      />
     </div>
   );
 }
 
 function FindingRow({
-  finding, open, onToggle, labelFor, onShowInGraph,
+  finding, open, onToggle, labelFor, onShowInGraph, aiProps,
 }: {
   finding: Finding; open: boolean; onToggle: () => void;
-  labelFor: Props["labelFor"]; onShowInGraph: Props["onShowInGraph"];
+  labelFor: Props["labelFor"]; onShowInGraph: Props["onShowInGraph"]; aiProps: AiProps;
 }) {
   const isVuln = finding.kind === "vulnerability";
   const severity = highestReportedSeverity(finding);
@@ -311,6 +447,8 @@ function FindingRow({
               {isVuln && (finding.cwes ?? []).filter((c) => c.url).slice(0, 2).map((c) => (
                 <Badge key={c.id} variant="outline" className="font-mono">{c.id}</Badge>
               ))}
+              {finding.risk_level && <RiskBadge level={finding.risk_level} />}
+              {finding.kind === "suspicious" && <Badge variant="secondary">{categoryLabel(finding.category)}</Badge>}
               <Badge variant={sourceAgreement(finding) === "Both" ? "secondary" : "outline"}>
                 {sourceAgreement(finding)}
               </Badge>
@@ -327,7 +465,7 @@ function FindingRow({
             </span>
           </span>
         </button>
-        {isVuln && finding.subject_id && (
+        {finding.subject_id && (
           <Button
             variant="ghost"
             size="xs"
@@ -337,13 +475,30 @@ function FindingRow({
           </Button>
         )}
       </div>
-      {open && <FindingDetails finding={finding} labelFor={labelFor} onShowInGraph={onShowInGraph} />}
+      {open && <FindingDetails finding={finding} labelFor={labelFor} onShowInGraph={onShowInGraph} aiProps={aiProps} />}
     </li>
   );
 }
 
-/** Phase 1B findings: OSV + Grype vulnerabilities and workflow-pin anomalies, with evidence. */
-export default function FindingsPanel({ findings, labelFor, onShowInGraph }: Props) {
+/** Phase 1B findings: vulnerabilities, suspicious supply-chain changes and workflow pins, with evidence. */
+export default function FindingsPanel({ findings, labelFor, onShowInGraph, ai = aiService }: Props) {
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    ai.getStatus().then(
+      (s) => { if (!cancelled) setAiStatus(s); },
+      () => {
+        if (!cancelled) {
+          setAiStatus({
+            enabled: false, configured: false, provider: "", api_key_env: "", model: "", prompt_version: "", tool_budget: 0,
+            data_notice: "",
+          });
+        }
+      },
+    );
+    return () => { cancelled = true; };
+  }, [ai]);
+  const aiProps: AiProps = { scanId: findings.scan_id, aiStatus, ai };
   const [kind, setKind] = useState<FindingKind>("vulnerability");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -356,6 +511,7 @@ export default function FindingsPanel({ findings, labelFor, onShowInGraph }: Pro
 
   const tabs: Array<[FindingKind, string, number]> = [
     ["vulnerability", "Vulnerabilities", stats.vulnerabilities],
+    ["suspicious", "Suspicious changes", stats.suspicious ?? 0],
     ["workflow_pin", "Workflow pins", stats.workflow_pins],
   ];
 
@@ -365,11 +521,12 @@ export default function FindingsPanel({ findings, labelFor, onShowInGraph }: Pro
         <ShieldAlert className="size-4" aria-hidden /> Risk findings
       </h2>
 
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         <StatTile label="Vulnerabilities" value={assessedAny ? stats.vulnerabilities : "Not assessed"} />
         <StatTile label="Vulnerable packages" value={assessedAny ? stats.vulnerable_packages : "—"} />
         <StatTile label="Confirmed by both" value={assessedAny ? stats.confirmed_by_both : "—"} />
         <StatTile label="CVEs linked (NVD)" value={assessedAny ? stats.cves_linked ?? "—" : "—"} />
+        <StatTile label="Suspicious changes" value={stats.suspicious ?? "—"} />
         <StatTile label="Workflow pins" value={stats.workflow_pins} />
         <StatTile label="Packages assessed" value={`${stats.components_assessed} / ${stats.components_total}`} />
       </dl>
@@ -399,7 +556,7 @@ export default function FindingsPanel({ findings, labelFor, onShowInGraph }: Pro
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input
             aria-label="Search findings"
-            placeholder="Search package, CVE, GHSA or CWE"
+            placeholder="Search package, CVE, GHSA, CWE or category"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setLimit(PAGE_SIZE); }}
             className="pl-8"
@@ -414,6 +571,17 @@ export default function FindingsPanel({ findings, labelFor, onShowInGraph }: Pro
         </p>
       )}
 
+      {kind === "suspicious" && (
+        <>
+          <ChangesSection changes={findings.changes} />
+          <p className="text-xs text-muted-foreground">
+            Non-CVE checks of lockfiles, manifests and container files: install scripts, packages from outside the
+            registry, missing integrity hashes, loose versions, unpinned images, lookalike names and changes since the
+            last scan. Sorted by Kestral&apos;s rule-based initial risk level.
+          </p>
+        </>
+      )}
+
       {visible.length === 0 ? (
         <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
           {query
@@ -422,7 +590,9 @@ export default function FindingsPanel({ findings, labelFor, onShowInGraph }: Pro
               ? assessedAny
                 ? "No known vulnerabilities were reported for the assessed packages."
                 : "Vulnerabilities were not assessed: no source was available."
-              : "No mutable workflow references found."}
+              : kind === "suspicious"
+                ? "No suspicious changes found by the supply-chain checks."
+                : "No mutable workflow references found."}
         </p>
       ) : (
         <ul className="grid gap-2">
@@ -434,6 +604,7 @@ export default function FindingsPanel({ findings, labelFor, onShowInGraph }: Pro
               onToggle={() => setOpenId((id) => (id === finding.finding_id ? null : finding.finding_id))}
               labelFor={labelFor}
               onShowInGraph={onShowInGraph}
+              aiProps={aiProps}
             />
           ))}
         </ul>

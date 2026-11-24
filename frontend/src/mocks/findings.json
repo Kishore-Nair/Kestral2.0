@@ -236,6 +236,51 @@
         "A tag or branch can be moved to different code; only a full commit SHA is immutable",
         "First-party GitHub action: lower risk, but still mutable"
       ]
+    },
+    {
+      "finding_id": "finding:sample0004",
+      "kind": "suspicious",
+      "title": "jest@0.0.0-sample runs an install script",
+      "subject_id": "cmp:3a4b5c",
+      "subject_label": "jest@0.0.0-sample",
+      "advisory_ids": [],
+      "sources": [
+        {
+          "name": "supply-chain-scan",
+          "record_id": "package-lock.json:packages.node_modules/jest",
+          "url": null,
+          "severity": null,
+          "cvss_vectors": [],
+          "match_type": null
+        }
+      ],
+      "fixed_versions": [],
+      "evidence": [
+        {
+          "path": "package-lock.json",
+          "kind": "lockfile",
+          "locator": "packages.node_modules/jest hasInstallScript"
+        }
+      ],
+      "scope": "dev",
+      "directness": "direct",
+      "dependency_paths": [
+        [
+          "root:6d7e",
+          "cmp:3a4b5c"
+        ]
+      ],
+      "affected_projects": [
+        "root:6d7e"
+      ],
+      "dependent_packages": 0,
+      "uncertainty": [
+        "SAMPLE fixture: not from a real scan",
+        "The lockfile only says a script exists; its contents were not inspected"
+      ],
+      "category": "install_script",
+      "risk_level": "low",
+      "risk_reason": "Install scripts run arbitrary code on every `npm install` (development dependency)"
     }
   ],
   "sources": [
@@ -278,6 +323,26 @@
       "queried": 1,
       "raw_output": null,
       "message": null
+    },
+    {
+      "name": "supply-chain-scan",
+      "status": "ok",
+      "tool_version": null,
+      "database_built": null,
+      "retrieved_at": null,
+      "queried": 3,
+      "raw_output": null,
+      "message": "3 lockfile/manifest/container file(s) and 6 package names checked"
+    },
+    {
+      "name": "scan-diff",
+      "status": "ok",
+      "tool_version": null,
+      "database_built": null,
+      "retrieved_at": null,
+      "queried": 5,
+      "raw_output": "changes.json",
+      "message": "Compared with scan_sample_prev: 1 added, 0 removed, 0 upgraded, 1 downgraded"
     }
   ],
   "stats": {
@@ -289,10 +354,63 @@
     "components_assessed": 5,
     "components_not_assessed": 1,
     "cves_linked": 0,
-    "nvd_scored": 0
+    "nvd_scored": 0,
+    "suspicious": 1
   },
   "partial": true,
   "warnings": [
     "1 package(s) not assessed: no exact version or unsupported ecosystem"
-  ]
+  ],
+  "changes": {
+    "baseline_scan_id": "scan_sample_prev",
+    "baseline_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "baseline_ref": "main",
+    "baseline_finished_at": "2026-11-23T10:00:00+00:00",
+    "current_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "same_commit": false,
+    "added": [
+      {
+        "ecosystem": "npm",
+        "name": "jest",
+        "project_path": "",
+        "from_versions": [],
+        "to_versions": [
+          "0.0.0-sample"
+        ],
+        "component_id": "cmp:3a4b5c"
+      }
+    ],
+    "removed": [],
+    "upgraded": [],
+    "downgraded": [
+      {
+        "ecosystem": "npm",
+        "name": "debug",
+        "project_path": "",
+        "from_versions": [
+          "2.6.9"
+        ],
+        "to_versions": [
+          "2.6.8"
+        ],
+        "component_id": "cmp:7a8b9c"
+      }
+    ],
+    "other_changes": [],
+    "totals": {
+      "added": 1,
+      "removed": 0,
+      "upgraded": 0,
+      "downgraded": 1,
+      "other_changes": 0
+    },
+    "files_compared": true,
+    "files_changed": [
+      {
+        "path": "package-lock.json",
+        "change": "modified"
+      }
+    ],
+    "truncated": false
+  }
 }

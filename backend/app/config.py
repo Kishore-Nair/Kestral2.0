@@ -51,6 +51,21 @@ class Settings(BaseSettings):
     nvd_budget_seconds: PositiveInt = 1200
     nvd_cache_days: PositiveInt = 7
     nvd_cache_root: Path = Path("data/nvd")
+    # Optional AI analyst (off by default). The key is read from the environment only.
+    ai_enabled: bool = False
+    ai_provider: str = "groq"  # "groq" (default), "xai" (Grok) or "anthropic" (Claude)
+    ai_model: str | None = None  # unset: the provider's default model
+    groq_api_key: SecretStr | None = None
+    xai_api_key: SecretStr | None = None
+    anthropic_api_key: SecretStr | None = None
+    ai_effort: str | None = None  # provider reasoning effort; unset uses the provider default
+    ai_timeout_seconds: PositiveInt = 120
+    ai_wall_clock_seconds: PositiveInt = 300
+    ai_max_output_tokens: PositiveInt | None = None  # unset: provider default
+    ai_max_tool_result_chars: PositiveInt | None = None  # unset: provider default
+    ai_tool_budget: PositiveInt = 5
+    ai_external_budget: int = 2
+    ai_external_timeout_seconds: PositiveInt = 15
     max_active_scans: PositiveInt = 1
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65_535)

@@ -1,9 +1,13 @@
 import type { Finding, FindingKind, FindingsDocument } from "@/types/findings";
 
 /** Who reported a finding. Agreement is shown, never voted on. */
-export function sourceAgreement(finding: Finding): "Both" | "OSV only" | "Grype only" | "Workflow scan" {
+export function sourceAgreement(
+  finding: Finding,
+): "Both" | "OSV only" | "Grype only" | "Workflow scan" | "Repository files" | "Scan comparison" {
   const names = new Set(finding.sources.map((s) => s.name));
   if (names.has("workflow-scan")) return "Workflow scan";
+  if (names.has("supply-chain-scan")) return "Repository files";
+  if (names.has("scan-diff")) return "Scan comparison";
   if (names.has("OSV") && names.has("Grype")) return "Both";
   return names.has("OSV") ? "OSV only" : "Grype only";
 }
@@ -31,16 +35,26 @@ export function severityRank(finding: Finding): number {
   return label ? SEVERITY_RANK[label.toLowerCase()] ?? 0 : 0;
 }
 
+const RISK_RANK = { high: 3, medium: 2, low: 1 } as const;
+
+/** Human label for a suspicious-finding category ("install_script" -> "Install script"). */
+export function categoryLabel(category: string | null | undefined): string {
+  if (!category) return "Other";
+  const text = category.replace(/_/g, " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 const DIRECTNESS_RANK = { direct: 0, transitive: 1, unknown: 2 } as const;
 
 /**
- * Kestral priority first (when scored), then CVSS base score, then highest reported
+ * Kestral priority first (when scored), then rule-based risk level, then CVSS base score, then highest reported
  * severity, then direct before transitive, then by package.
  */
 export function sortFindings(findings: Finding[]): Finding[] {
   return [...findings].sort(
     (a, b) =>
       (b.priority?.score ?? -1) - (a.priority?.score ?? -1) ||
+      (b.risk_level ? RISK_RANK[b.risk_level] : 0) - (a.risk_level ? RISK_RANK[a.risk_level] : 0) ||
       (b.cvss?.base_score ?? -1) - (a.cvss?.base_score ?? -1) ||
       severityRank(b) - severityRank(a) ||
       DIRECTNESS_RANK[a.directness ?? "unknown"] - DIRECTNESS_RANK[b.directness ?? "unknown"] ||
@@ -58,6 +72,7 @@ export function filterFindings(findings: Finding[], kind: FindingKind, query: st
         f.subject_label.toLowerCase().includes(q) ||
         f.title.toLowerCase().includes(q) ||
         f.advisory_ids.some((id) => id.toLowerCase().includes(q)) ||
+        (f.category ?? "").replace(/_/g, " ").includes(q) ||
         (f.cwes ?? []).some((c) => c.id.toLowerCase().includes(q))),
   );
 }

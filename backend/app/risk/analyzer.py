@@ -1,4 +1,5 @@
-"""Risk analysis stage: OSV + Grype vulnerabilities, NVD/CVSS scoring and workflow pins.
+"""Risk analysis stage: vulnerabilities (OSV + Grype, NVD/CVSS), workflow pins,
+suspicious supply-chain changes and the diff against the previous scan.
 
 A failing source never fails the scan: it is recorded as failed, the document is
 marked partial, and the other source's findings are still reported. Raw source
@@ -11,11 +12,22 @@ import uuid
 from pathlib import Path
 
 from app.graph.builder import make_networkx_graph
+from app.risk.changes import (
+    CHANGES_FILE,
+    SNAPSHOT_FILE,
+    Baseline,
+    change_findings,
+    compare,
+    file_snapshot,
+    load_baseline,
+)
+from app.risk.declarations import manifest_declarations
 from app.risk.grype import GrypeError, GrypeResult, run_grype
 from app.risk.merge import GRYPE_FILE, OSV_FILE, vulnerability_findings
 from app.risk.nvd import NvdClient, NvdLookup
 from app.risk.osv import OsvError, OsvResult, query_osv
 from app.risk.scoring import NVD_FILE, cve_ids, enrich_findings
+from app.risk.suspicious import escalate, suspicious_findings
 from app.risk.targets import select_targets
 from app.risk.workflows import workflow_findings
 from app.schemas.dependency import DependencyDocument
@@ -50,6 +62,8 @@ def analyze_risk(
     grype_run=run_grype,
     nvd_client: NvdClient | None = None,
     nvd_budget: float = 1200,
+    baseline: Baseline | None = None,
+    current_commit: str | None = None,
 ) -> FindingsDocument:
     targets = select_targets(document.components)
     graph = make_networkx_graph(document, app_name)
@@ -145,6 +159,67 @@ def analyze_risk(
     warnings.extend(pin_warnings)
     runs.append(SourceRun(name="workflow-scan", status="ok", queried=len(inventory.ci_files)))
 
+    suspicious, suspicious_warnings, files_checked = suspicious_findings(
+        repo_dir, inventory, document, graph
+    )
+    warnings.extend(suspicious_warnings)
+    runs.append(
+        SourceRun(
+            name="supply-chain-scan",
+            status="ok",
+            queried=files_checked,
+            message=f"{files_checked} lockfile/manifest/container file(s) and "
+            f"{len(document.components)} package names checked",
+        )
+    )
+    snapshot = file_snapshot(repo_dir, inventory)
+    _write_json(
+        scan_dir / SNAPSHOT_FILE,
+        {
+            "scan_id": scan_id,
+            "files": snapshot,
+            "declarations": manifest_declarations(repo_dir, inventory),
+        },
+    )
+    changes = None
+    if baseline is None:
+        runs.append(
+            SourceRun(
+                name="scan-diff",
+                status="skipped",
+                message="No previous completed scan of this repository to compare with",
+            )
+        )
+    else:
+        loaded = load_baseline(baseline)
+        if loaded is None:
+            warnings.append(f"Previous scan {baseline.scan_id} could not be read for comparison")
+            runs.append(
+                SourceRun(
+                    name="scan-diff", status="failed", message="Baseline artifacts unreadable"
+                )
+            )
+        else:
+            baseline_doc, baseline_files = loaded
+            changes = compare(
+                document, baseline_doc, baseline, current_commit, snapshot, baseline_files
+            )
+            _write_json(scan_dir / CHANGES_FILE, changes.model_dump(mode="json"))
+            suspicious.extend(change_findings(changes, document, inventory, graph))
+            t = changes.totals
+            runs.append(
+                SourceRun(
+                    name="scan-diff",
+                    status="ok",
+                    queried=len(baseline_doc.components),
+                    raw_output=CHANGES_FILE,
+                    message=f"Compared with {baseline.scan_id}: {t['added']} added, "
+                    f"{t['removed']} removed, {t['upgraded']} upgraded, "
+                    f"{t['downgraded']} downgraded",
+                )
+            )
+    suspicious = escalate(suspicious)
+
     assessed_any = osv is not None or grype is not None
     if purls and not assessed_any:
         warnings.append("Vulnerabilities not assessed: no vulnerability source was available")
@@ -167,17 +242,20 @@ def analyze_risk(
         components_not_assessed=len(document.components) - assessed,
         cves_linked=len(all_cves),
         nvd_scored=sum(1 for f in vulnerabilities if f.cvss and f.cvss.source.startswith("NVD")),
+        suspicious=len(suspicious),
     )
     failed = (
         any(run.status == "failed" for run in runs)
         or bool(pin_warnings)
+        or bool(suspicious_warnings)
         or bool(nvd and nvd.not_looked_up)
     )
     return FindingsDocument(
         scan_id=scan_id,
-        findings=[*vulnerabilities, *pins],
+        findings=[*vulnerabilities, *pins, *suspicious],
         sources=runs,
         stats=stats,
         partial=failed or targets.not_assessed > 0 or (bool(purls) and not assessed_any),
         warnings=list(dict.fromkeys(warnings)),
+        changes=changes,
     )

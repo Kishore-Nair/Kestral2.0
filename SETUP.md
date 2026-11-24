@@ -29,6 +29,8 @@
 
 **NVD (CVE details, CWEs, CVSS):** each CVE is looked up once in the NVD CVE API 2.0 and cached in `data/nvd/` for `NVD_CACHE_DAYS`. Without a key NVD allows 5 requests per 30 s, so the first scan of a large project can spend many minutes in *Analyzing risk* (about 6 s per new CVE; NodeGoat's 181 CVEs take ~18 min). A free key (`NVD_API_KEY` in your local `.env`, never committed) makes it ~10x faster. CVEs not reached within `NVD_BUDGET_SECONDS` are reported as not looked up, and the next scan continues from the cache.
 
+**Kestral AI analyst (optional, off by default):** on a finding, *Analyze with Kestral AI* runs a bounded, read-only investigation on Groq (default model `openai/gpt-oss-120b` via the OpenAI-compatible `https://api.groq.com/openai/v1/chat/completions`; `AI_PROVIDER=xai` with `XAI_API_KEY` uses xAI Grok, `AI_PROVIDER=anthropic` with `ANTHROPIC_API_KEY` uses Claude) and returns an evidence-linked remediation proposal that Kestral checks deterministically (fixed version against OSV ranges, manifest ranges, dependency paths) before showing it. It never applies, builds, installs or rescans anything; approve/reject only records a decision. To enable it, set `AI_ENABLED=true` and `GROQ_API_KEY` (from console.groq.com; keys start with `gsk_`) in your local `.env` (never committed; Groq bills $0.15 / $0.60 per million input / output tokens for `openai/gpt-oss-120b`, and its free tier allows about 30 requests and 8K tokens per minute, so Kestral keeps Groq requests small and waits briefly when rate-limited), restart the backend, and run `python -m alembic upgrade head` once for the `ai_analyses` table. Each analysis sends that finding, its package, dependency paths, saved advisory records and short evidence excerpts to the provider; source code, `.env` and credentials are never sent. Limits: `AI_TOOL_BUDGET` tool calls per finding (default 5), of which `AI_EXTERNAL_BUDGET` may hit OSV or the npm/PyPI registry (default 2). Without a key, scans and findings work exactly as before. The test suite never calls the live API.
+
 ### Windows PowerShell check
 
 ```powershell
@@ -139,6 +141,21 @@ NVD_BUDGET_SECONDS=1200
 NVD_CACHE_DAYS=7
 NVD_CACHE_ROOT=data/nvd
 MAX_ACTIVE_SCANS=1
+# Optional AI analyst (off by default). Keys stay in this local file; never commit them.
+AI_ENABLED=false
+# AI_PROVIDER: groq (default), xai (Grok) or anthropic (Claude)
+AI_PROVIDER=groq
+GROQ_API_KEY=
+XAI_API_KEY=
+ANTHROPIC_API_KEY=
+# Leave empty for the provider default (groq: openai/gpt-oss-120b, xai: grok-4.7)
+AI_MODEL=
+# Reasoning effort (groq gpt-oss: low|medium|high); empty uses the provider default
+AI_EFFORT=
+AI_TOOL_BUDGET=5
+AI_EXTERNAL_BUDGET=2
+AI_TIMEOUT_SECONDS=120
+AI_WALL_CLOCK_SECONDS=300
 
 API_HOST=127.0.0.1
 API_PORT=8000
@@ -197,6 +214,7 @@ dependencies = [
   "networkx>=3.3,<4",
   "packaging>=24,<27",
   "packageurl-python>=0.16,<2",
+  "anthropic>=2.13,<3",
 ]
 
 [project.optional-dependencies]
