@@ -1,6 +1,7 @@
 import json
 import re
 import tempfile
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -16,7 +17,7 @@ Decision = Literal["ALLOW", "REVIEW", "BLOCK"]
 
 
 class Violation(StrictModel):
-    policy_id: Literal["POL-001", "POL-002", "POL-003", "POL-004", "POL-005", "POL-006"]
+    policy_id: Literal["POL-001", "POL-002", "POL-003", "POL-004", "POL-005", "POL-006", "POL-007"]
     severity: Literal["REVIEW", "BLOCK"]
     message: Reference
     evidence_refs: list[Reference] = Field(min_length=1, max_length=12)
@@ -62,20 +63,27 @@ def build_input(
     if findings.scan_id != scan_id or provenance.scan_id != scan_id:
         raise OperationError("Evidence scan ID does not match the requested scan ID")
     items = []
+    counts = Counter(finding.kind for finding in findings.findings)
     for finding in findings.findings:
         if not 0 < len(finding.finding_id) <= 512:
             raise OperationError("Invalid finding ID")
-        items.append({
+        item = {
             "id": finding.finding_id, "kind": finding.kind, "scope": finding.scope,
             "score": finding.cvss.base_score if finding.cvss else None,
-        })
+        }
+        if finding.kind == "suspicious":
+            category = finding.category
+            if category is not None and (not category.strip() or len(category) > 128):
+                raise OperationError("Invalid suspicious finding category")
+            item.update(category=category, risk_level=finding.risk_level)
+        items.append(item)
     runs = {source.name: source.status for source in findings.sources}
-    vulnerabilities = sum(item["kind"] == "vulnerability" for item in items)
     if (
         len({item["id"] for item in items}) != len(items)
         or len(runs) != len(findings.sources)
-        or findings.stats.vulnerabilities != vulnerabilities
-        or findings.stats.workflow_pins != len(items) - vulnerabilities
+        or findings.stats.vulnerabilities != counts["vulnerability"]
+        or findings.stats.workflow_pins != counts["workflow_pin"]
+        or findings.stats.suspicious != counts["suspicious"]
         or findings.stats.components_total
         != findings.stats.components_assessed + findings.stats.components_not_assessed
     ):

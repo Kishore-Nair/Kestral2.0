@@ -12,7 +12,7 @@ valid_input if {
 	every f in input.findings {
 		is_string(f.id)
 		count(f.id) > 0
-		f.kind in {"vulnerability", "workflow_pin"}
+		valid_finding_kind(f)
 		valid_score(f.score)
 		valid_scope(f.scope)
 	}
@@ -28,6 +28,21 @@ valid_input if {
 			regex.match("^sha256:[a-f0-9]{64}$", d)
 		}
 	}
+}
+
+valid_finding_kind(f) if f.kind in {"vulnerability", "workflow_pin"}
+
+valid_finding_kind(f) if {
+	f.kind == "suspicious"
+	object.get(f, "risk_level", null) in {"low", "medium", "high", null}
+	valid_category(object.get(f, "category", null))
+}
+
+valid_category(null)
+valid_category(category) if {
+	is_string(category)
+	trim_space(category) != ""
+	count(category) <= 128
 }
 
 valid_score(null)
@@ -115,6 +130,13 @@ violations contains v if {
 	f.kind == "vulnerability"
 	finding_incomplete(f)
 	v := violation("POL-006", incomplete_severity, "Vulnerability score or scope unavailable", [f.id])
+}
+
+violations contains v if {
+	some f in input.findings
+	f.kind == "suspicious"
+	f.risk_level == "high"
+	v := violation("POL-007", "REVIEW", "High-risk suspicious finding requires review", [f.id])
 }
 
 decision := "BLOCK" if {

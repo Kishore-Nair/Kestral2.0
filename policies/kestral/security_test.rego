@@ -75,6 +75,37 @@ test_unauthorized_signer if {
 	v.policy_id == "POL-004"
 }
 
+suspicious := {
+	"id": "synthetic-suspicious", "kind": "suspicious", "scope": "dev",
+	"score": null, "risk_level": "high", "category": "lifecycle_script_indicator",
+}
+
+test_suspicious_high_risk_stays_review_in_strict_mode if {
+	assessed := result with input as object.union(clean, {"findings": [suspicious], "strict": true})
+	assessed.decision == "REVIEW"
+	[v] := assessed.violations
+	v.policy_id == "POL-007"
+	v.evidence_refs == ["synthetic-suspicious"]
+}
+
+test_mixed_finding_precedence if {
+	assessed := result with input as object.union(clean, {"findings": [suspicious, mutable, critical]})
+	assessed.decision == "BLOCK"
+	{v.policy_id | some v in assessed.violations} == {"POL-001", "POL-005", "POL-007"}
+}
+
+test_low_risk_heuristic_remains_non_blocking if {
+	low := object.union(suspicious, {"category": "recent_package", "risk_level": "low"})
+	result.decision == "ALLOW" with input as object.union(clean, {"findings": [low]})
+}
+
+test_invalid_suspicious_fields_fail_closed if {
+	malformed := object.union(suspicious, {"risk_level": "critical"})
+	not result with input as object.union(clean, {"findings": [malformed]})
+	invalid_category := object.union(suspicious, {"category": []})
+	not result with input as object.union(clean, {"findings": [invalid_category]})
+}
+
 test_malformed_and_empty_are_undefined if {
 	not result with input as {}
 	not result with input as object.remove(clean, ["artifacts"])
