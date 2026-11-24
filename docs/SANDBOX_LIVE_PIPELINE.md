@@ -92,6 +92,9 @@ test output, verdict and comparison. Local rehearsal API captures are in
 
 Open PowerShell in this checkout, with Docker Desktop running:
 
+Kestral loads secrets from the repository-root `.env`, beside `docker-compose.yml`.
+For GitHub PR creation, set `GITHUB_TOKEN` in that file. Do not put it in `backend/.env`.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File backend/scripts/start-live.ps1
 ```
