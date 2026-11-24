@@ -24,6 +24,8 @@ function makeService(statuses: ScanStatus[]): ScanApi & { getScan: ReturnType<ty
     getSbom: vi.fn(async () => sbomFixture as never),
     getGraph: vi.fn(async () => graphFixture as GraphDocument),
     getFindings: vi.fn(async () => findingsFixture as never),
+    getRemediations: vi.fn(async () => ({ schema_version: "1.0" as const, scan_id: "scan", proposals: [] })),
+    decideRemediation: vi.fn(),
   };
 }
 

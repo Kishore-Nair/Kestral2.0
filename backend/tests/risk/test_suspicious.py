@@ -431,3 +431,27 @@ def test_plain_http_with_integrity_is_medium_and_v1_locator_is_nested() -> None:
     [finding], _ = npm_lockfile_findings("package-lock.json", json.dumps(v1), _Index(), None)
     assert finding.risk_level == "medium"
     assert finding.evidence[0].locator.startswith("dependencies.npm.dependencies.nan resolved=http")
+
+
+def test_missing_reference_lists_skip_the_typosquat_check(tmp_path, monkeypatch) -> None:
+    from app.risk import suspicious
+
+    monkeypatch.setattr(suspicious, "DATA_DIR", tmp_path / "missing")
+    suspicious.popular.cache_clear()
+    suspicious._known.cache_clear()
+    suspicious._delete_index.cache_clear()
+    suspicious._stripped_index.cache_clear()
+    try:
+        findings, warnings, _ = suspicious.suspicious_findings(
+            tmp_path, make_inventory(), graph_doc(), None
+        )
+        assert not [f for f in findings if f.category == "typosquat"]
+        assert "Typosquat check skipped" in warnings[-1]
+    finally:
+        for fn in (
+            suspicious.popular,
+            suspicious._known,
+            suspicious._delete_index,
+            suspicious._stripped_index,
+        ):
+            fn.cache_clear()

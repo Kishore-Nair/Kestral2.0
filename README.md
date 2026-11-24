@@ -337,6 +337,29 @@ def build_graph(document: DependencyDocument, app_name: str) -> GraphDocument: .
 
 ## After Phase 1 (not work required for the first graph milestone)
 
+### Evidence-bound human remediation decisions
+
+Completed scans now create conservative remediation proposals from verified findings. A reviewer
+may approve or reject a proposal only after supplying their identity label, at least one structured
+decision factor, and a substantive written explanation. The decision is immutable and bound to the
+repository commit, finding digest, proposal digest and proposal version that the reviewer saw.
+
+Approval means only that the exact recommendation may advance to a later controlled validation
+stage. It does **not** apply a patch, prove the fix, merge code, accept risk or authorize deployment.
+Rejection blocks that proposal; it does not suppress the underlying finding. Reviewer identity is
+self-declared in this hackathon prototype and is not authenticated; production use must replace it
+with SSO identity and role-based authorization.
+
+API endpoints:
+
+- `GET /api/v1/scans/{scan_id}/remediations`
+- `GET /api/v1/scans/{scan_id}/remediations/{proposal_id}`
+- `POST /api/v1/scans/{scan_id}/remediations/{proposal_id}/decision`
+
+This implements the Bosch Day 2 transition `Prioritized Risk → Recommended Fix → Human Decision
+with Reasoning`. Patch application, sandboxed build/test, rescan and verified remediation remain
+separate follow-on stages so the UI never claims that an approved recommendation has been tested.
+
 **Phase 1B / Bosch Day 1:** integrate one vulnerability source (e.g., OSV) and identify at least one non-CVE anomaly (changed lockfile, unsafe workflow pin, or suspicious script). Show source evidence, dependency path, finding and uncertainty. **Phase 2 / Bosch Day 2:** rule-assisted explainable prioritization, proposed fix with human approval, safe sandbox validation and before/after rescan; maintain audit trail. **Stretch:** Supply Chain Change Intelligence (diff graph identities/edges with commit) and Trust Lineage (repository → commit → build workflow → SBOM → artifact → image → application). A future LLM should *interpret* verified evidence, not create missing facts.
 
 ## Documentation and official references

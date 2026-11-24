@@ -36,6 +36,7 @@ from app.ingestion.workspace import (
     enforce_workspace_limits,
     remove_scan_workspace,
 )
+from app.remediation.service import create_proposals
 from app.risk.changes import Baseline
 from app.risk.nvd import NvdClient
 from app.schemas.scan import ScanStatus
@@ -222,6 +223,14 @@ def run_scan(scan_id: str) -> None:
                 max_bytes=max_artifact_bytes,
             )
             record_artifact(db, row, field="findings_path", filename="findings.json")
+            proposal_warnings: list[str] = []
+            try:
+                create_proposals(db, row, findings)
+            except Exception:
+                logger.exception("remediation proposal generation failed: scan_id=%s", scan_id)
+                proposal_warnings.append(
+                    "Remediation proposals could not be generated; scan evidence remains available"
+                )
             finish_completed(
                 db,
                 row,
@@ -230,6 +239,7 @@ def run_scan(scan_id: str) -> None:
                     *document.warnings,
                     *graph.meta.warnings,
                     *findings.warnings,
+                    *proposal_warnings,
                 ],
             )
         except Exception as exc:
@@ -258,4 +268,3 @@ def run_reserved_scan(scan_id: str) -> None:
         run_scan(scan_id)
     finally:
         scan_capacity.release()
-

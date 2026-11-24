@@ -688,7 +688,10 @@ def suspicious_findings(
         text = read(path)
         if text is not None:
             findings += container_findings(path, text)
-    findings += typosquat_findings(document, graph)
+    try:
+        findings += typosquat_findings(document, graph)
+    except OSError:
+        warnings.append("Typosquat check skipped: the popular-package reference lists are missing")
 
     unique = {f.finding_id: f for f in findings}
     return list(unique.values()), warnings, checked

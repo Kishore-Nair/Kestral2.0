@@ -13,6 +13,8 @@ node_modules/
 out/
 coverage/
 data/
+# Bundled reference lists used by the typosquat check (not scan data)
+!backend/app/risk/data/
 .DS_Store
 Thumbs.db
 # Claude Code local & temporary files

@@ -3,6 +3,7 @@ import type { ScanCreate, ScanCreated, ScanState, Inventory } from "@/types/api"
 import type { GraphDocument } from "@/types/graph";
 import type { DependencyDocument } from "@/types/sbom";
 import type { FindingsDocument } from "@/types/findings";
+import type { RemediationDecisionCreate, RemediationList, RemediationProposal } from "@/types/remediation";
 
 export interface ScanApi {
   createScan(body: ScanCreate): Promise<ScanCreated>;
@@ -11,6 +12,8 @@ export interface ScanApi {
   getSbom(id: string): Promise<DependencyDocument>;
   getGraph(id: string): Promise<GraphDocument>;
   getFindings(id: string): Promise<FindingsDocument>;
+  getRemediations(id: string): Promise<RemediationList>;
+  decideRemediation(id: string, proposalId: string, body: RemediationDecisionCreate): Promise<RemediationProposal>;
 }
 
 const client = axios.create({
@@ -31,4 +34,10 @@ export const api: ScanApi = {
     (await client.get<GraphDocument>(`/scans/${encodeURIComponent(id)}/graph`)).data,
   getFindings: async (id) =>
     (await client.get<FindingsDocument>(`/scans/${encodeURIComponent(id)}/findings`)).data,
+  getRemediations: async (id) =>
+    (await client.get<RemediationList>(`/scans/${encodeURIComponent(id)}/remediations`)).data,
+  decideRemediation: async (id, proposalId, body) =>
+    (await client.post<RemediationProposal>(
+      `/scans/${encodeURIComponent(id)}/remediations/${encodeURIComponent(proposalId)}/decision`, body,
+    )).data,
 };

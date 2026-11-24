@@ -1,7 +1,7 @@
 """Create the ai_analyses table for the optional AI analyst.
 
-Revision ID: 20261124_0003
-Revises: 20261124_0002
+Revision ID: 20261124_0004
+Revises: 20261124_0003
 Create Date: 2026-11-24
 """
 
@@ -10,8 +10,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20261124_0003"
-down_revision: str | None = "20261124_0002"
+revision: str = "20261124_0004"
+down_revision: str | None = "20261124_0003"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
