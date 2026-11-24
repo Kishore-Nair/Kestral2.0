@@ -340,9 +340,17 @@ def build_graph(document: DependencyDocument, app_name: str) -> GraphDocument: .
 ### Evidence-bound human remediation decisions
 
 Completed scans now create conservative remediation proposals from verified findings. A reviewer
-may approve or reject a proposal only after supplying their identity label, at least one structured
-decision factor, and a substantive written explanation. The decision is immutable and bound to the
+approves or rejects a proposal by giving their identity label and answering six structured
+questions: production usage, compatibility, test confidence, ownership, alternatives and timing.
+Every question accepts **Unknown**, which is recorded honestly as "not assessed" rather than
+forcing the reviewer to invent context. A short optional note (≤ 280 characters) and a ticket
+reference are the only free text. Kestral generates the audit explanation deterministically from
+the selections (`explanation_template`, currently `assessment-v1`), so records are consistent
+across reviewers; approvals that accept breaking compatibility, no tests, no owner or a preferred
+alternative are called out explicitly. The decision is immutable and bound to the
 repository commit, finding digest, proposal digest and proposal version that the reviewer saw.
+Decisions recorded before this change keep their original reviewer-written reason and factors
+(`reason_source: "REVIEWER_WRITTEN"`).
 
 Approval means only that the exact recommendation may advance to a later controlled validation
 stage. It does **not** apply a patch, prove the fix, merge code, accept risk or authorize deployment.

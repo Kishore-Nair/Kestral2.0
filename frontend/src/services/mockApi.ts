@@ -88,10 +88,16 @@ export const mockApi: ScanApi = {
   getRemediations: async (id): Promise<RemediationList> => ({ schema_version: "1.0", scan_id: id, proposals: [sampleProposal(id)] }),
   decideRemediation: async (id, proposalId, body: RemediationDecisionCreate) => {
     const proposal = sampleProposal(id);
+    const unknown = Object.entries(body.assessment).filter(([, v]) => v === "UNKNOWN").map(([k]) => k.replaceAll("_", " "));
     const decisionBody = {
-      decision: body.decision, decided_by: body.decided_by, reason: body.reason,
-      factors: body.factors, conditions: body.conditions, alternative: body.alternative,
-      external_reference: body.external_reference,
+      decision: body.decision, decided_by: body.decided_by,
+      // The real API renders this server-side; the mock only approximates it.
+      reason: `${body.decision === "APPROVED" ? "Approved" : "Rejected"} the proposed ${proposal.action} of ${proposal.subject_label} (mock explanation).`
+        + (unknown.length ? ` Not assessed (reported as unknown): ${unknown.join(", ")}.` : "")
+        + (body.note ? ` Reviewer note: ${body.note}` : ""),
+      reason_source: "GENERATED" as const, explanation_template: "assessment-v1",
+      assessment: body.assessment, note: body.note, factors: [],
+      conditions: null, alternative: null, external_reference: body.external_reference,
     };
     const decided: RemediationProposal = {
       ...proposal, status: body.decision, version: proposal.version + 1,

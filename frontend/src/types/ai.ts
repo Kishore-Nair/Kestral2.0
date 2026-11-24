@@ -91,10 +91,55 @@ export interface AiRecommendation {
   model_metadata: { provider: string; model: string; prompt_version: string; effort: string | null; input_tokens: number; output_tokens: number };
 }
 
+export type AiDecisionType = "approved" | "changes_requested" | "rejected";
+
+export type AiFeedbackReason =
+  | "VERIFIED_SAFE_UPGRADE"
+  | "LOW_COMPATIBILITY_RISK"
+  | "TESTS_COVER_PATH"
+  | "ACCEPTABLE_TRADEOFF"
+  | "OWNER_CONFIRMED"
+  | "BREAKING_CHANGE"
+  | "WRONG_STRATEGY"
+  | "VERSION_UNSUITABLE"
+  | "MISSING_CONTEXT"
+  | "INSUFFICIENT_EVIDENCE"
+  | "ALTERNATIVE_PREFERRED"
+  | "NOT_APPLICABLE"
+  | "OTHER";
+
+export interface AiDecision {
+  decision: AiDecisionType;
+  reasons: AiFeedbackReason[];
+  note: string | null;
+  decided_at: string;
+}
+
+export interface AiDecisionRequest {
+  decision: AiDecisionType;
+  reasons?: AiFeedbackReason[];
+  note?: string | null;
+  trigger_revision?: boolean;
+}
+
+export interface AiFeedbackEntry {
+  analysis_id: string;
+  revision: number;
+  decision: AiDecisionType;
+  reasons: AiFeedbackReason[];
+  note: string | null;
+  previous_strategy: string | null;
+  previous_target_version: string | null;
+  previous_title: string | null;
+  decided_at: string;
+}
+
 export interface AiAnalysis {
   analysis_id: string;
   scan_id: string;
   finding_id: string;
+  revision: number;
+  parent_analysis_id: string | null;
   status: AnalysisStatus;
   stale: boolean;
   cached: boolean;
@@ -102,5 +147,7 @@ export interface AiAnalysis {
   created_at: string;
   finished_at: string | null;
   recommendation: AiRecommendation | null;
-  decision: { decision: "approved" | "rejected"; note: string | null; decided_at: string } | null;
+  decision: AiDecision | null;
+  feedback_history: AiFeedbackEntry[];
+  next_analysis_id: string | null;
 }

@@ -7,13 +7,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.models import RemediationDecisionRow, RemediationProposalRow, Scan
+from app.remediation.explanation import generate_explanation
 from app.remediation.generator import GeneratedProposal
 from app.schemas.findings import FindingsDocument
 from app.schemas.inventory import Evidence
 from app.schemas.remediation import (
+    EXPLANATION_TEMPLATE_VERSION,
     RemediationDecision,
     RemediationDecisionCreate,
     RemediationProposal,
+    ReviewAssessment,
 )
 
 
@@ -132,10 +135,13 @@ def decide_proposal(
         proposal_id=row.proposal_id,
         decision=request.decision,
         decided_by=request.decided_by,
-        reason=request.reason,
-        factors_json=list(request.factors),
-        conditions=request.conditions,
-        alternative=request.alternative,
+        reason=generate_explanation(request.decision, request.assessment, row, request.note),
+        factors_json=[],
+        assessment_json=request.assessment.model_dump(),
+        note=request.note,
+        explanation_template=EXPLANATION_TEMPLATE_VERSION,
+        conditions=None,
+        alternative=None,
         external_reference=request.external_reference,
         repository_commit=row.repository_commit,
         finding_digest=row.finding_digest,
@@ -163,6 +169,14 @@ def to_decision(row: RemediationDecisionRow) -> RemediationDecision:
         decision=row.decision,
         decided_by=row.decided_by,
         reason=row.reason,
+        reason_source="GENERATED" if row.assessment_json is not None else "REVIEWER_WRITTEN",
+        explanation_template=row.explanation_template,
+        assessment=(
+            ReviewAssessment.model_validate(row.assessment_json)
+            if row.assessment_json is not None
+            else None
+        ),
+        note=row.note,
         factors=row.factors_json,
         conditions=row.conditions,
         alternative=row.alternative,

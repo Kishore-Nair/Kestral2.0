@@ -58,6 +58,11 @@ fixed, applied, tested or resolved.
 - Use status no_verified_fix when no trusted fixed version exists, insufficient_evidence when \
 the evidence cannot support a recommendation, needs_human_review when a judgement call or \
 breaking change is likely, and recommendation_ready otherwise.
+- If <human_feedback> is provided, it contains reviewer feedback (approvals, requested \
+changes, or rejection reasons) from prior proposal revision(s). Address every concern directly, \
+incorporate constraints or preferences noted by the reviewer, avoid repeating rejected strategies \
+or versions unless new verified evidence supports them, and still never invent versions, facts or \
+evidence even if requested.
 
 You may make at most {budget} tool calls in total, at most {external} of them external \
 (lookup_advisory, get_package_metadata). Call tools only for facts you still need. {finish}"""
@@ -113,7 +118,7 @@ def _original(bundle: ScanBundle, finding: Finding) -> OriginalFinding:
     )
 
 
-def initial_context(ctx: ToolContext) -> str:
+def initial_context(ctx: ToolContext, feedback_history: list[dict] | None = None) -> str:
     """Preloaded facts (not tool calls): scan identity, the finding, its evidence, its package."""
     bundle, finding, store = ctx.bundle, ctx.finding, ctx.store
     evidence = [
@@ -155,11 +160,22 @@ def initial_context(ctx: ToolContext) -> str:
         "component": component_view,
         "graph_direction": "from_id depends on to_id; a project points to its direct dependencies",
     }
-    return (
+    prompt = (
         "<scan_context>\n"
         + json.dumps(context, default=str, ensure_ascii=False)
-        + "\n</scan_context>\n\nInvestigate this finding and produce the final JSON answer."
+        + "\n</scan_context>"
     )
+    if feedback_history:
+        prompt += (
+            "\n\n<human_feedback>\n"
+            + json.dumps(feedback_history, default=str, ensure_ascii=False)
+            + "\n</human_feedback>\n\n"
+            "Revise your remediation recommendation to address the reviewer feedback in "
+            "<human_feedback> while citing only verified scan or tool evidence. "
+            "Produce the final JSON answer."
+        )
+        return prompt
+    return prompt + "\n\nInvestigate this finding and produce the final JSON answer."
 
 
 FINAL_REQUEST = (
@@ -180,6 +196,7 @@ def run_agent(
     *,
     tool_context: Callable[[ScanBundle, Finding, EvidenceStore], ToolContext] | None = None,
     clock: Callable[[], float] = time.monotonic,
+    feedback_history: list[dict] | None = None,
 ) -> AgentRun:
     store = EvidenceStore()
     ctx = (
@@ -193,7 +210,7 @@ def run_agent(
         finish=FINISH_SAME_CALL if provider.structured_with_tools else FINISH_SEPARATE_CALL,
     )
     tools = provider.tool_specs([t.schema() for t in TOOLS.values()])
-    messages: list[dict] = provider.user_message(initial_context(ctx))
+    messages: list[dict] = provider.user_message(initial_context(ctx, feedback_history))
     trace: list[ToolCall] = []
     used = external_used = 0
     repairs = 0

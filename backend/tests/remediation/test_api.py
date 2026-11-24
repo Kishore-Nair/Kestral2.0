@@ -12,6 +12,15 @@ from app.database.models import RemediationProposalRow, Scan
 from app.database.session import get_db
 from app.main import app
 
+ASSESSMENT_KEYS = (
+    "production_usage",
+    "compatibility",
+    "test_confidence",
+    "ownership",
+    "alternatives",
+    "timing",
+)
+
 
 @pytest.fixture
 def client() -> Generator[TestClient, None, None]:
@@ -81,16 +90,27 @@ def test_lists_and_records_explained_decision(client: TestClient) -> None:
         json={
             "decision": "REJECTED",
             "decided_by": "owner@example.com",
-            "reason": "The proposed update breaks an application API used by this service.",
-            "factors": ["COMPATIBILITY", "APPLICATION_CONTEXT"],
-            "alternative": "Wait for the compatible parent dependency release.",
+            "assessment": {
+                "production_usage": "IN_PRODUCTION",
+                "compatibility": "BREAKING",
+                "test_confidence": "UNKNOWN",
+                "ownership": "OWNER_CONFIRMED",
+                "alternatives": "ALTERNATIVE_PREFERRED",
+                "timing": "NEXT_RELEASE",
+            },
+            "note": "Wait for the compatible parent release.",
             "expected_proposal_version": 1,
         },
     )
     assert decided.status_code == 200
     body = decided.json()
     assert body["status"] == "REJECTED"
-    assert body["decision"]["reason"].startswith("The proposed update")
+    reason = body["decision"]["reason"]
+    assert reason.startswith("Rejected the proposed upgrade of example@1.0.0")
+    assert "expected to break existing behaviour" in reason
+    assert "Not assessed (reported as unknown): test confidence." in reason
+    assert reason.endswith("Reviewer note: Wait for the compatible parent release.")
+    assert body["decision"]["reason_source"] == "GENERATED"
     assert body["decision"]["repository_commit"] == "a" * 40
 
     repeated = client.post(
@@ -98,8 +118,7 @@ def test_lists_and_records_explained_decision(client: TestClient) -> None:
         json={
             "decision": "APPROVED",
             "decided_by": "second@example.com",
-            "reason": "A second reviewer should not be able to overwrite the first decision.",
-            "factors": ["SECURITY_RISK"],
+            "assessment": dict.fromkeys(ASSESSMENT_KEYS, "UNKNOWN"),
             "expected_proposal_version": 2,
         },
     )
@@ -107,14 +126,12 @@ def test_lists_and_records_explained_decision(client: TestClient) -> None:
     assert repeated.json()["error"]["code"] == "PROPOSAL_ALREADY_DECIDED"
 
 
-def test_rejects_missing_reason(client: TestClient) -> None:
+def test_rejects_missing_assessment(client: TestClient) -> None:
     response = client.post(
         "/api/v1/scans/scan_1/remediations/rem_1/decision",
         json={
             "decision": "APPROVED",
             "decided_by": "owner@example.com",
-            "reason": "approved",
-            "factors": ["SECURITY_RISK"],
             "expected_proposal_version": 1,
         },
     )

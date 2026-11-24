@@ -1,12 +1,13 @@
 import axios from "axios";
-import type { AiAnalysis, AiStatus } from "@/types/ai";
+import type { AiAnalysis, AiDecisionRequest, AiStatus } from "@/types/ai";
 
 export interface AiApi {
   getStatus(): Promise<AiStatus>;
   getRemediation(scanId: string, findingId: string): Promise<AiAnalysis | null>;
   start(scanId: string, findingId: string, refresh?: boolean): Promise<AiAnalysis>;
   get(scanId: string, analysisId: string): Promise<AiAnalysis>;
-  decide(scanId: string, analysisId: string, decision: "approved" | "rejected", note?: string): Promise<AiAnalysis>;
+  decide(scanId: string, analysisId: string, body: AiDecisionRequest): Promise<AiAnalysis>;
+  revise(scanId: string, analysisId: string): Promise<AiAnalysis>;
 }
 
 const client = axios.create({
@@ -25,8 +26,10 @@ export const aiApi: AiApi = {
     )).data,
   get: async (scanId, analysisId) =>
     (await client.get<AiAnalysis>(`/scans/${enc(scanId)}/ai-analysis/${enc(analysisId)}`)).data,
-  decide: async (scanId, analysisId, decision, note) =>
-    (await client.post<AiAnalysis>(`/scans/${enc(scanId)}/ai-analysis/${enc(analysisId)}/decision`, { decision, note })).data,
+  decide: async (scanId, analysisId, body) =>
+    (await client.post<AiAnalysis>(`/scans/${enc(scanId)}/ai-analysis/${enc(analysisId)}/decision`, body)).data,
+  revise: async (scanId, analysisId) =>
+    (await client.post<AiAnalysis>(`/scans/${enc(scanId)}/ai-analysis/${enc(analysisId)}/revise`)).data,
 };
 
 /** Mock mode never fabricates an AI analysis: it reports AI as not configured. */
@@ -40,6 +43,7 @@ export const mockAiApi: AiApi = {
   start: async () => { throw new Error("AI analysis is not available in sample data mode"); },
   get: async () => { throw new Error("AI analysis is not available in sample data mode"); },
   decide: async () => { throw new Error("AI analysis is not available in sample data mode"); },
+  revise: async () => { throw new Error("AI analysis is not available in sample data mode"); },
 };
 
 export const aiService: AiApi = process.env.NEXT_PUBLIC_USE_MOCKS === "true" ? mockAiApi : aiApi;

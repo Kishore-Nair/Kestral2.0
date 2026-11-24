@@ -57,6 +57,8 @@ class AiAnalysisRow(Base):
     analysis_id: Mapped[str] = mapped_column(String(40), primary_key=True)
     scan_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     finding_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    parent_analysis_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     commit_sha: Mapped[str | None] = mapped_column(String(64))
     cache_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -66,8 +68,10 @@ class AiAnalysisRow(Base):
     result_json: Mapped[dict | None] = mapped_column(JSON)
     error_message: Mapped[str | None] = mapped_column(Text)
     decision: Mapped[str | None] = mapped_column(String(20))
+    decision_reasons_json: Mapped[list[str] | None] = mapped_column(JSON)
     decision_note: Mapped[str | None] = mapped_column(Text)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    feedback_history_json: Mapped[list[dict] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -131,6 +135,10 @@ class RemediationDecisionRow(Base):
     decided_by: Mapped[str] = mapped_column(String(200), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     factors_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    # Structured reviewer selections; NULL only for legacy free-text decisions.
+    assessment_json: Mapped[dict[str, str] | None] = mapped_column(JSON)
+    note: Mapped[str | None] = mapped_column(Text)
+    explanation_template: Mapped[str | None] = mapped_column(String(40))
     conditions: Mapped[str | None] = mapped_column(Text)
     alternative: Mapped[str | None] = mapped_column(Text)
     external_reference: Mapped[str | None] = mapped_column(Text)

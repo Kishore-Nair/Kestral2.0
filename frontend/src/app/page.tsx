@@ -18,6 +18,7 @@ import { useScan, type ArtifactState } from "@/hooks/useScan";
 import { USE_MOCKS } from "@/services/scanService";
 import type { GraphStats } from "@/types/graph";
 import RemediationPanel from "@/components/remediation/RemediationPanel";
+import { usePersistentScanId } from "@/hooks/usePersistentScanId";
 
 function ArtifactPanel<T>({
   state, label, onRetry, children,
@@ -67,7 +68,7 @@ function StatsBar({ stats }: { stats: GraphStats }) {
 }
 
 export default function Home() {
-  const [scanId, setScanId] = useState<string | null>(null);
+  const [scanId, setScanId] = usePersistentScanId();
   const [formKey, setFormKey] = useState(0);
   const { scan, poll, artifacts, retryPolling, retryArtifacts } = useScan(scanId);
 

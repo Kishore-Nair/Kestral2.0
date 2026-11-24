@@ -1,6 +1,7 @@
 """Start, run, cache and read AI analyses. Never touches scan status or scan artifacts."""
 
 import hashlib
+import json
 import logging
 import threading
 import uuid
@@ -23,7 +24,14 @@ from app.ai.provider import (
 from app.ai.tools import ToolContext
 from app.config import Settings
 from app.database.models import AiAnalysisRow, Scan
-from app.schemas.ai import PROMPT_VERSION, AiAnalysis, AiDecision, AiRecommendation, AiStatus
+from app.schemas.ai import (
+    PROMPT_VERSION,
+    AiAnalysis,
+    AiDecision,
+    AiFeedbackEntry,
+    AiRecommendation,
+    AiStatus,
+)
 
 logger = logging.getLogger(__name__)
 TERMINAL_OK = {
@@ -114,7 +122,13 @@ def load_bundle(settings: Settings, row: Scan) -> ScanBundle:
 
 
 def cache_key(
-    row: Scan, finding_id: str, digest: str, provider: str, model: str, effort: str | None
+    row: Scan,
+    finding_id: str,
+    digest: str,
+    provider: str,
+    model: str,
+    effort: str | None,
+    feedback_history: list[dict] | None = None,
 ) -> str:
     parts = [
         row.scan_id,
@@ -126,20 +140,37 @@ def cache_key(
         model,
         effort or "",
     ]
+    if feedback_history:
+        parts.append(json.dumps(feedback_history, sort_keys=True, default=str))
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
 
 
-def to_api(row: AiAnalysisRow, current_key: str | None, cached: bool = False) -> AiAnalysis:
+def to_api(
+    row: AiAnalysisRow,
+    current_key: str | None,
+    cached: bool = False,
+    next_analysis_id: str | None = None,
+) -> AiAnalysis:
     recommendation = AiRecommendation.model_validate(row.result_json) if row.result_json else None
     decision = (
-        AiDecision(decision=row.decision, note=row.decision_note, decided_at=row.decided_at)
+        AiDecision(
+            decision=row.decision,
+            reasons=list(row.decision_reasons_json or []),
+            note=row.decision_note,
+            decided_at=row.decided_at,
+        )
         if row.decision and row.decided_at
         else None
     )
+    history = [
+        AiFeedbackEntry.model_validate(item) for item in (row.feedback_history_json or [])
+    ]
     return AiAnalysis(
         analysis_id=row.analysis_id,
         scan_id=row.scan_id,
         finding_id=row.finding_id,
+        revision=row.revision or 1,
+        parent_analysis_id=row.parent_analysis_id,
         status=row.status,
         stale=current_key is not None and current_key != row.cache_key,
         cached=cached,
@@ -148,6 +179,8 @@ def to_api(row: AiAnalysisRow, current_key: str | None, cached: bool = False) ->
         finished_at=row.finished_at,
         recommendation=recommendation,
         decision=decision,
+        feedback_history=history,
+        next_analysis_id=next_analysis_id,
     )
 
 
@@ -167,6 +200,17 @@ def start_analysis(
     bundle = load_bundle(settings, row)
     if bundle.finding(finding_id) is None:
         raise KeyError(finding_id)
+    prior_history: list[dict] | None = None
+    parent_id: str | None = None
+    revision = 1
+    if force:
+        latest = latest_for_finding(db, row.scan_id, finding_id)
+        if latest and latest.decision:
+            prior_history = list(latest.feedback_history_json or []) + [
+                build_feedback_entry(latest)
+            ]
+            parent_id = latest.analysis_id
+            revision = (latest.revision or 1) + 1
     key = cache_key(
         row,
         finding_id,
@@ -174,6 +218,7 @@ def start_analysis(
         settings.ai_provider,
         model_name(settings),
         effort(settings),
+        feedback_history=prior_history,
     )
     with _lock:
         existing = db.scalars(
@@ -190,12 +235,15 @@ def start_analysis(
             analysis_id=f"ai_{uuid.uuid4().hex}",
             scan_id=row.scan_id,
             finding_id=finding_id,
+            parent_analysis_id=parent_id,
+            revision=revision,
             commit_sha=row.commit_sha,
             cache_key=key,
             status="queued",
             provider=settings.ai_provider,
             model=model_name(settings),
             prompt_version=PROMPT_VERSION,
+            feedback_history_json=prior_history,
         )
         db.add(analysis)
         db.commit()
@@ -239,7 +287,12 @@ def run_analysis(
                 )
 
             result = run_agent(
-                bundle, finding, provider, limits, tool_context=tool_context or default_context
+                bundle,
+                finding,
+                provider,
+                limits,
+                tool_context=tool_context or default_context,
+                feedback_history=analysis.feedback_history_json,
             )
             analysis.status = result.status
             analysis.error_message = result.error
@@ -272,11 +325,81 @@ def current_key(settings: Settings, row: Scan, analysis: AiAnalysisRow) -> str |
         settings.ai_provider,
         model_name(settings),
         effort(settings),
+        feedback_history=analysis.feedback_history_json,
     )
 
 
-def record_decision(db: Session, analysis: AiAnalysisRow, decision: str, note: str | None) -> None:
+def build_feedback_entry(analysis: AiAnalysisRow) -> dict:
+    rec = analysis.result_json or {}
+    rem = rec.get("recommended_remediation") if isinstance(rec, dict) else None
+    entry = AiFeedbackEntry(
+        analysis_id=analysis.analysis_id,
+        revision=analysis.revision or 1,
+        decision=analysis.decision,
+        reasons=list(analysis.decision_reasons_json or []),
+        note=analysis.decision_note,
+        previous_strategy=rem.get("type") if isinstance(rem, dict) else None,
+        previous_target_version=rem.get("target_version") if isinstance(rem, dict) else None,
+        previous_title=rec.get("title") if isinstance(rec, dict) else None,
+        decided_at=analysis.decided_at or datetime.now(UTC),
+    )
+    return entry.model_dump(mode="json")
+
+
+def start_revision(
+    db: Session, settings: Settings, row: Scan, parent: AiAnalysisRow
+) -> tuple[AiAnalysisRow, bool]:
+    """Queue a new AI revision incorporating the parent's human feedback."""
+    bundle = load_bundle(settings, row)
+    if bundle.finding(parent.finding_id) is None:
+        raise KeyError(parent.finding_id)
+    history = list(parent.feedback_history_json or []) + [build_feedback_entry(parent)]
+    key = cache_key(
+        row,
+        parent.finding_id,
+        bundle.digest,
+        settings.ai_provider,
+        model_name(settings),
+        effort(settings),
+        feedback_history=history,
+    )
+    with _lock:
+        existing = db.scalars(
+            select(AiAnalysisRow)
+            .where(AiAnalysisRow.cache_key == key)
+            .order_by(AiAnalysisRow.created_at.desc())
+            .limit(1)
+        ).first()
+        if existing and (existing.status in ACTIVE or existing.status in TERMINAL_OK):
+            return existing, False
+        child = AiAnalysisRow(
+            analysis_id=f"ai_{uuid.uuid4().hex}",
+            scan_id=row.scan_id,
+            finding_id=parent.finding_id,
+            parent_analysis_id=parent.analysis_id,
+            revision=(parent.revision or 1) + 1,
+            commit_sha=row.commit_sha,
+            cache_key=key,
+            status="queued",
+            provider=settings.ai_provider,
+            model=model_name(settings),
+            prompt_version=PROMPT_VERSION,
+            feedback_history_json=history,
+        )
+        db.add(child)
+        db.commit()
+        return child, True
+
+
+def record_decision(
+    db: Session,
+    analysis: AiAnalysisRow,
+    decision: str,
+    note: str | None,
+    reasons: list[str] | None = None,
+) -> None:
     analysis.decision = decision
+    analysis.decision_reasons_json = list(reasons or [])
     analysis.decision_note = note
     analysis.decided_at = datetime.now(UTC)
     db.commit()

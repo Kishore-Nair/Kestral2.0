@@ -129,7 +129,11 @@ def get_remediation(scan_id: str, finding_id: str, db: DatabaseSession) -> AiAna
     responses=ERROR_RESPONSES,
 )
 def record_ai_decision(
-    scan_id: str, analysis_id: str, body: AiDecisionRequest, db: DatabaseSession
+    scan_id: str,
+    analysis_id: str,
+    body: AiDecisionRequest,
+    background_tasks: BackgroundTasks,
+    db: DatabaseSession,
 ) -> AiAnalysis:
     row = _require_scan(db, scan_id)
     analysis = _analysis(db, scan_id, analysis_id)
@@ -140,6 +144,13 @@ def record_ai_decision(
             message="There is no recommendation to decide on",
             scan_id=scan_id,
         )
+    if analysis.decision is not None:
+        raise ApiProblem(
+            status=409,
+            code="ANALYSIS_ALREADY_DECIDED",
+            message="This AI proposal revision already has a recorded decision",
+            scan_id=scan_id,
+        )
     key = service.current_key(settings, row, analysis)
     if key != analysis.cache_key:
         raise ApiProblem(
@@ -148,5 +159,94 @@ def record_ai_decision(
             message="The recommendation is stale; analyze again",
             scan_id=scan_id,
         )
-    service.record_decision(db, analysis, body.decision, body.note)
-    return service.to_api(analysis, key)
+    wants_revision = body.decision == "changes_requested" or (
+        body.decision == "rejected" and body.trigger_revision
+    )
+    if wants_revision and not service.ai_status(settings).configured:
+        raise ApiProblem(
+            status=503,
+            code="AI_NOT_CONFIGURED",
+            message="AI analysis is not configured on this server",
+            scan_id=scan_id,
+        )
+    service.record_decision(db, analysis, body.decision, body.note, list(body.reasons))
+    next_id: str | None = None
+    if wants_revision:
+        try:
+            child, should_run = service.start_revision(db, settings, row, analysis)
+        except KeyError:
+            raise ApiProblem(
+                status=404,
+                code="FINDING_NOT_FOUND",
+                message="No such finding in this scan",
+                scan_id=scan_id,
+            ) from None
+        except BundleError:
+            raise ApiProblem(
+                status=503,
+                code="ARTIFACT_UNAVAILABLE",
+                message="Scan findings could not be loaded",
+                scan_id=scan_id,
+            ) from None
+        except SQLAlchemyError:
+            raise _database_unavailable() from None
+        if should_run:
+            background_tasks.add_task(
+                service.run_analysis, session_factory, settings, child.analysis_id
+            )
+        next_id = child.analysis_id
+    return service.to_api(analysis, key, next_analysis_id=next_id)
+
+
+@router.post(
+    "/scans/{scan_id}/ai-analysis/{analysis_id}/revise",
+    response_model=AiAnalysis,
+    status_code=202,
+    responses=ERROR_RESPONSES,
+)
+def revise_ai_analysis(
+    scan_id: str,
+    analysis_id: str,
+    background_tasks: BackgroundTasks,
+    db: DatabaseSession,
+) -> AiAnalysis:
+    """Trigger a new AI revision using the recorded rejection or change-request feedback."""
+    if not service.ai_status(settings).configured:
+        raise ApiProblem(
+            status=503,
+            code="AI_NOT_CONFIGURED",
+            message="AI analysis is not configured on this server",
+            scan_id=scan_id,
+        )
+    row = _completed_scan(db, scan_id)
+    parent = _analysis(db, scan_id, analysis_id)
+    if parent.decision not in ("rejected", "changes_requested"):
+        raise ApiProblem(
+            status=409,
+            code="FEEDBACK_REQUIRED",
+            message="Request changes or reject with reasons before revising with AI",
+            scan_id=scan_id,
+        )
+    try:
+        child, should_run = service.start_revision(db, settings, row, parent)
+    except KeyError:
+        raise ApiProblem(
+            status=404,
+            code="FINDING_NOT_FOUND",
+            message="No such finding in this scan",
+            scan_id=scan_id,
+        ) from None
+    except BundleError:
+        raise ApiProblem(
+            status=503,
+            code="ARTIFACT_UNAVAILABLE",
+            message="Scan findings could not be loaded",
+            scan_id=scan_id,
+        ) from None
+    except SQLAlchemyError:
+        raise _database_unavailable() from None
+    if should_run:
+        background_tasks.add_task(
+            service.run_analysis, session_factory, settings, child.analysis_id
+        )
+    return service.to_api(child, child.cache_key, cached=not should_run)

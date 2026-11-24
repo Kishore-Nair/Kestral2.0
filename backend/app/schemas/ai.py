@@ -9,7 +9,7 @@ never an applied or validated change.
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import Field, JsonValue
+from pydantic import Field, JsonValue, field_validator, model_validator
 
 from app.schemas.base import StrictModel
 
@@ -212,21 +212,115 @@ class AiRecommendation(StrictModel):
     model_metadata: ModelMetadata
 
 
+AiDecisionType = Literal["approved", "changes_requested", "rejected"]
+AiFeedbackReason = Literal[
+    "VERIFIED_SAFE_UPGRADE",
+    "LOW_COMPATIBILITY_RISK",
+    "TESTS_COVER_PATH",
+    "ACCEPTABLE_TRADEOFF",
+    "OWNER_CONFIRMED",
+    "BREAKING_CHANGE",
+    "WRONG_STRATEGY",
+    "VERSION_UNSUITABLE",
+    "MISSING_CONTEXT",
+    "INSUFFICIENT_EVIDENCE",
+    "ALTERNATIVE_PREFERRED",
+    "NOT_APPLICABLE",
+    "OTHER",
+]
+
+TRIVIAL_AI_FEEDBACK = {
+    "no",
+    "yes",
+    "ok",
+    "lgtm",
+    "looks good",
+    "approve",
+    "approved",
+    "reject",
+    "rejected",
+    "change",
+    "changes",
+    "fix",
+    "bad",
+    "nope",
+    "na",
+    "n/a",
+}
+
+
 class AiDecision(StrictModel):
-    decision: Literal["approved", "rejected"]
+    decision: AiDecisionType
+    reasons: list[AiFeedbackReason] = Field(default_factory=list)
     note: str | None
     decided_at: datetime
 
 
+class AiFeedbackEntry(StrictModel):
+    """One prior human review round fed back into a subsequent AI revision."""
+
+    analysis_id: str
+    revision: int = Field(ge=1)
+    decision: AiDecisionType
+    reasons: list[AiFeedbackReason] = Field(default_factory=list)
+    note: str | None = None
+    previous_strategy: str | None = None
+    previous_target_version: str | None = None
+    previous_title: str | None = None
+    decided_at: datetime
+
+
 class AiDecisionRequest(StrictModel):
-    decision: Literal["approved", "rejected"]
+    decision: AiDecisionType
+    reasons: list[AiFeedbackReason] = Field(default_factory=list, max_length=8)
     note: Annotated[str, Field(max_length=1000)] | None = None
+    trigger_revision: bool = False
+
+    @field_validator("note")
+    @classmethod
+    def strip_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @model_validator(mode="after")
+    def validate_feedback(self) -> "AiDecisionRequest":
+        if len(set(self.reasons)) != len(self.reasons):
+            raise ValueError("Feedback reasons must be unique")
+        if self.decision == "approved":
+            if not self.reasons:
+                raise ValueError("Select at least one structured reason when approving a proposal")
+            if not self.note or len(self.note) < 10:
+                raise ValueError(
+                    "Provide substantive approval feedback (at least 10 characters)"
+                )
+            if self.note.casefold().rstrip(".! ") in TRIVIAL_AI_FEEDBACK:
+                raise ValueError("Explain why the proposed fix is approved")
+        elif self.decision == "rejected":
+            if not self.reasons:
+                raise ValueError("Select at least one structured reason when rejecting a proposal")
+            if not self.note or len(self.note) < 10:
+                raise ValueError(
+                    "Provide a substantive explanation (at least 10 characters) when rejecting"
+                )
+            if self.note.casefold().rstrip(".! ") in TRIVIAL_AI_FEEDBACK:
+                raise ValueError("Explain why the proposed fix is rejected")
+        elif self.decision == "changes_requested":
+            if not self.note or len(self.note) < 10:
+                raise ValueError(
+                    "Describe the requested changes (at least 10 characters) for the AI feedback"
+                )
+            if self.note.casefold().rstrip(".! ") in TRIVIAL_AI_FEEDBACK:
+                raise ValueError("Provide actionable feedback describing what should change")
+        return self
 
 
 class AiAnalysis(StrictModel):
     analysis_id: str
     scan_id: str
     finding_id: str
+    revision: int = 1
+    parent_analysis_id: str | None = None
     status: AnalysisStatus
     stale: bool
     cached: bool
@@ -235,6 +329,8 @@ class AiAnalysis(StrictModel):
     finished_at: datetime | None
     recommendation: AiRecommendation | None
     decision: AiDecision | None
+    feedback_history: list[AiFeedbackEntry] = Field(default_factory=list)
+    next_analysis_id: str | None = None
 
 
 class AiStatus(StrictModel):

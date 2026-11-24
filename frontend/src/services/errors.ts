@@ -22,6 +22,12 @@ export function classifyError(error: unknown): FriendlyError {
     const detail = backendMessage(error.response?.data);
     switch (status) {
       case 404:
+        // Kestral 404s carry a structured error; FastAPI's bare {"detail":"Not Found"} means the
+        // running backend has no such route (usually an outdated server), not a missing scan.
+        if (detail) return { kind: "not_found", status, message: detail };
+        if ((error.response?.data as { detail?: unknown } | undefined)?.detail === "Not Found") {
+          return { kind: "unavailable", status, message: "The running backend does not provide this endpoint. Restart it from the latest code." };
+        }
         return { kind: "not_found", status, message: "Scan ID was not found. Submit the repository again." };
       case 409:
         return { kind: "not_ready", status, message: detail ?? "Not ready yet." };
