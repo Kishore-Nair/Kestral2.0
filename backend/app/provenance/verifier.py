@@ -85,8 +85,13 @@ def verify_blob(
                 elif code == 1 and any(marker in output for marker in NEGATIVE):
                     status, assessment = "failed", "complete"
                     reason = "Cosign reported a cryptographic mismatch"
-                elif code == 1 and b"not enough verified log entries from transparency log" in output:
-                    raise OperationError("Bundle lacks the required verified transparency-log proof")
+                elif (
+                    code == 1
+                    and b"not enough verified log entries from transparency log" in output
+                ):
+                    raise OperationError(
+                        "Bundle lacks the required verified transparency-log proof"
+                    )
                 else:
                     raise OperationError("Cosign did not return a recognized verification outcome")
         except OperationError as error:

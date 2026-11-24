@@ -10,7 +10,9 @@ from .verifier import verify_blob
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify a local blob using trusted Cosign evidence")
+    parser = argparse.ArgumentParser(
+        description="Verify a local blob using trusted Cosign evidence"
+    )
     parser.add_argument("--scan-id", required=True)
     for flag in ("workspace", "artifact", "output"):
         parser.add_argument("--" + flag, required=True, type=Path)
