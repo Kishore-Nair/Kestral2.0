@@ -11,7 +11,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.errors import register_exception_handlers
 from app.api.routes.ai import router as ai_router
 from app.api.routes.remediations import router as remediations_router
+from app.api.routes.report import router as report_router
 from app.api.routes.scans import router as scans_router
+from app.api.routes.validation import router as validation_router
 from app.config import settings
 from app.database.scans import reconcile_interrupted_scans
 from app.database.session import session_factory
@@ -47,6 +49,8 @@ register_exception_handlers(app)
 app.include_router(scans_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
 app.include_router(remediations_router, prefix="/api/v1")
+app.include_router(validation_router, prefix="/api/v1")
+app.include_router(report_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health", tags=["health"])

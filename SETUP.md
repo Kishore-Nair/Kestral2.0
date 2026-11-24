@@ -29,6 +29,8 @@
 
 **NVD (CVE details, CWEs, CVSS):** each CVE is looked up once in the NVD CVE API 2.0 and cached in `data/nvd/` for `NVD_CACHE_DAYS`. Without a key NVD allows 5 requests per 30 s, so the first scan of a large project can spend many minutes in *Analyzing risk* (about 6 s per new CVE; NodeGoat's 181 CVEs take ~18 min). A free key (`NVD_API_KEY` in your local `.env`, never committed) makes it ~10x faster. CVEs not reached within `NVD_BUDGET_SECONDS` are reported as not looked up, and the next scan continues from the cache.
 
+**Sandbox validation and Guardian report (Day 2):** after a reviewer approves a version upgrade (a remediation proposal or an AI recommendation), *Validate in sandbox* clones the exact scanned commit into a separate workspace, applies the change deterministically to that project's `requirements*.txt` / `pyproject.toml` / `package.json` (npm `overrides` for transitive packages), regenerates `package-lock.json` with `npm install --package-lock-only --ignore-scripts` and `uv.lock` inside a container, runs the project's tests **before and after inside a container**, rescans the patched copy with the full pipeline and compares the findings (verdict, diff, before/after risk, remaining risk). Nothing is merged, pushed or deployed, and the original scan is untouched. Project code runs only in a container (`--cap-drop=ALL`, no new privileges, memory/CPU/PID limits, source mounted read-only); without one, tests are reported as not run. Install a runtime once (macOS): `brew install podman && podman machine init --cpus 2 --memory 4096 --disk-size 30 && podman machine start` (Docker also works). Images pulled on first use: `python:3.12-slim`, `node:22-slim` (about 150 MB each). The **Guardian report** (`GET /api/v1/scans/{id}/report.html` or `report.json`, also the *Guardian report* buttons in the UI) is a self-contained HTML file with the Kestral logo, ready to print to PDF, plus a machine-readable JSON with the full inventory, findings, decisions, validations, remaining risk, audit trail and Responsible AI note. Run `python -m alembic upgrade head` once for the `validation_runs` table.
+
 **Kestral AI analyst (optional, off by default):** on a finding, *Analyze with Kestral AI* runs a bounded, read-only investigation on Groq (default model `openai/gpt-oss-120b` via the OpenAI-compatible `https://api.groq.com/openai/v1/chat/completions`; `AI_PROVIDER=xai` with `XAI_API_KEY` uses xAI Grok, `AI_PROVIDER=anthropic` with `ANTHROPIC_API_KEY` uses Claude) and returns an evidence-linked remediation proposal that Kestral checks deterministically (fixed version against OSV ranges, manifest ranges, dependency paths) before showing it. It never applies, builds, installs or rescans anything; approve/reject only records a decision. To enable it, set `AI_ENABLED=true` and `GROQ_API_KEY` (from console.groq.com; keys start with `gsk_`) in your local `.env` (never committed; Groq bills $0.15 / $0.60 per million input / output tokens for `openai/gpt-oss-120b`, and its free tier allows about 30 requests and 8K tokens per minute, so Kestral keeps Groq requests small and waits briefly when rate-limited), restart the backend, and run `python -m alembic upgrade head` once for the `ai_analyses` table. Each analysis sends that finding, its package, dependency paths, saved advisory records and short evidence excerpts to the provider; source code, `.env` and credentials are never sent. Limits: `AI_TOOL_BUDGET` tool calls per finding (default 5), of which `AI_EXTERNAL_BUDGET` may hit OSV or the npm/PyPI registry (default 2). Without a key, scans and findings work exactly as before. The test suite never calls the live API.
 
 ### Windows PowerShell check
@@ -156,6 +158,12 @@ AI_TOOL_BUDGET=5
 AI_EXTERNAL_BUDGET=2
 AI_TIMEOUT_SECONDS=120
 AI_WALL_CLOCK_SECONDS=300
+# Sandbox validation of approved fixes. Project tests run only inside a container.
+VALIDATION_RUN_TESTS=true
+# podman or docker; leave empty to auto-detect
+VALIDATION_CONTAINER_RUNTIME=
+VALIDATION_TEST_TIMEOUT_SECONDS=900
+VALIDATION_LOCK_TIMEOUT_SECONDS=300
 
 API_HOST=127.0.0.1
 API_PORT=8000

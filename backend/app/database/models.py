@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -148,3 +149,25 @@ class RemediationDecisionRow(Base):
     decided_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
+
+
+class ValidationRunRow(Base):
+    """One sandbox validation of one approved change. Separate from scan status."""
+
+    __tablename__ = "validation_runs"
+
+    validation_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scan_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    finding_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    verdict: Mapped[str | None] = mapped_column(String(40))
+    run_tests: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    change_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    result_json: Mapped[dict | None] = mapped_column(JSON)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -337,6 +337,22 @@ def build_graph(document: DependencyDocument, app_name: str) -> GraphDocument: .
 
 ## After Phase 1 (not work required for the first graph milestone)
 
+### Sandbox validation and the Guardian report (Day 2, steps 4-5)
+
+An approved version upgrade can be validated in a sandbox: a fresh clone of the exact scanned
+commit, a deterministic manifest patch, lockfile regeneration (npm with scripts disabled;
+`uv.lock` inside a container), the project's tests before and after inside a locked-down Podman
+or Docker container, and a full Kestral rescan of the patched copy. The verdict (`FIXED`,
+`FIXED_WITH_NEW_RISK`, `FIXED_TESTS_FAILED`, `NOT_FIXED`, `FAILED`) comes with the unified diff,
+before/after risk counts, resolved and introduced findings, the SBOM diff and the remaining risk.
+Nothing is merged, pushed or deployed; the original scan artifacts are never modified.
+
+The Guardian report (`/api/v1/scans/{scan_id}/report.html` and `report.json`) assembles the
+inventory, ranked findings with evidence, remediation proposals and AI recommendations with
+their human decisions, sandbox validation results, remaining and accepted risk, an audit trail
+and the Responsible AI and security note. The HTML is self-contained (logo embedded) and prints
+to PDF from any browser.
+
 ### Evidence-bound human remediation decisions
 
 Completed scans now create conservative remediation proposals from verified findings. A reviewer

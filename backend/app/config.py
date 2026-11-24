@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     ai_tool_budget: PositiveInt = 5
     ai_external_budget: int = 2
     ai_external_timeout_seconds: PositiveInt = 15
+    # Sandbox validation of approved fixes. Project tests run only inside a container.
+    validation_run_tests: bool = True
+    validation_container_runtime: str | None = None  # "podman" | "docker"; unset: auto-detect
+    validation_test_timeout_seconds: PositiveInt = 900
+    validation_lock_timeout_seconds: PositiveInt = 300
     max_active_scans: PositiveInt = 1
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65_535)
@@ -79,4 +84,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
