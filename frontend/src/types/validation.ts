@@ -72,6 +72,8 @@ export interface ValidationResult {
   rescan_artifacts: string | null;
   residual_risks: string[];
 }
+export interface PullRequestInfo { url: string; number: number; branch: string; base: string; created_at: string }
+
 export interface ValidationRun {
   schema_version: "1.0";
   validation_id: string;
@@ -82,8 +84,16 @@ export interface ValidationRun {
   created_at: string;
   finished_at: string | null;
   result: ValidationResult | null;
+  pull_request?: PullRequestInfo | null;
+  patch_available?: boolean;
 }
-export interface SandboxInfo { container_runtime: string | null; tests_enabled: boolean; npm_available: boolean; notes: string[] }
+export interface SandboxInfo {
+  container_runtime: string | null;
+  tests_enabled: boolean;
+  npm_available: boolean;
+  notes: string[];
+  github_configured?: boolean;
+}
 export interface ValidationOverview {
   schema_version: "1.0";
   scan_id: string;

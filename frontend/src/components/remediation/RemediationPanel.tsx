@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { OPEN_REMEDIATION, announceDecision } from "@/lib/decisionEvents";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -141,33 +143,168 @@ function DecisionForm({ scanId, proposal, service, onDecided }: {
   );
 }
 
-export default function RemediationPanel({ scanId, service = scanService }: { scanId: string; service?: ScanApi }) {
+type StatusFilter = "ALL" | RemediationProposal["status"];
+
+const STATUS_STYLE: Record<RemediationProposal["status"], string> = {
+  PENDING: "border-amber-600/50 bg-amber-50 text-amber-900",
+  APPROVED: "border-slate-400 bg-slate-900 text-white",
+  REJECTED: "border-transparent bg-rose-700 text-white",
+  SUPERSEDED: "border-slate-300 text-muted-foreground",
+};
+
+function ProposalRow({ scanId, proposal, service, open, onToggle, onDecided }: {
+  scanId: string; proposal: RemediationProposal; service: ScanApi; open: boolean;
+  onToggle: () => void; onDecided: (value: RemediationProposal) => void;
+}) {
+  // Mount the body on first open and keep it mounted, so a half-filled decision form
+  // survives collapsing the row.
+  const [mounted, setMounted] = useState(open);
+  useEffect(() => { if (open) setMounted(true); }, [open]);
+  const bodyId = `proposal-${proposal.proposal_id}`;
+  const Chevron = open ? ChevronDown : ChevronRight;
+  return (
+    <li className="rounded-lg border">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/40"
+      >
+        <Chevron className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <Badge>{proposal.action}</Badge>
+        <Badge variant="outline" className={STATUS_STYLE[proposal.status]}>{proposal.status}</Badge>
+        <code>{proposal.subject_label}</code>
+        {proposal.proposed_value && (
+          <span className="text-xs text-muted-foreground">→ {proposal.proposed_value}</span>
+        )}
+        <span className="ml-auto text-xs text-muted-foreground">
+          {proposal.status === "PENDING" ? "Decide" : proposal.decision ? `by ${proposal.decision.decided_by}` : ""}
+        </span>
+      </button>
+      {mounted && (
+        <section id={bodyId} hidden={!open} className="grid gap-3 border-t p-4">
+          <p className="font-medium">{proposal.recommendation}</p><p className="text-sm text-muted-foreground">{proposal.rationale}</p>
+          <dl className="grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">Expected risk reduction</dt><dd>{proposal.expected_risk_reduction}</dd></div><div><dt className="text-muted-foreground">Compatibility impact</dt><dd>{proposal.compatibility_impact}</dd></div></dl>
+          {proposal.proposed_value && <p className="text-sm">Version: <code>{proposal.current_value ?? "unknown"}</code> → <code>{proposal.proposed_value}</code></p>}
+          <details className="text-sm"><summary className="cursor-pointer font-medium">Evidence and uncertainty</summary><ul className="mt-2 grid gap-1 text-xs">{proposal.evidence.map((e, i) => <li key={`${e.path}-${i}`}><code>{e.path}</code> · {e.kind} · {e.locator}</li>)}{proposal.uncertainty.map((u) => <li key={u} className="text-muted-foreground">Uncertainty: {u}</li>)}</ul></details>
+          {proposal.status === "PENDING" ? <DecisionForm scanId={scanId} proposal={proposal} service={service} onDecided={onDecided} /> : <DecisionRecord proposal={proposal} />}
+        </section>
+      )}
+    </li>
+  );
+}
+
+export default function RemediationPanel({ scanId, service = scanService, defaultOpen = false }: {
+  scanId: string; service?: ScanApi; defaultOpen?: boolean;
+}) {
   const [proposals, setProposals] = useState<RemediationProposal[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(defaultOpen);
+  // Keep the body mounted after the first open so unsaved decision drafts survive collapsing.
+  const [panelMounted, setPanelMounted] = useState(defaultOpen);
+  useEffect(() => { if (panelOpen) setPanelMounted(true); }, [panelOpen]);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // Other panels (e.g. sandbox validation) can ask this one to open and come into view.
   useEffect(() => {
-    let active = true; setProposals(null); setError(null);
+    const open = () => {
+      setPanelOpen(true);
+      setFilter("PENDING");
+      cardRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    };
+    window.addEventListener(OPEN_REMEDIATION, open);
+    return () => window.removeEventListener(OPEN_REMEDIATION, open);
+  }, []);
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<StatusFilter>("ALL");
+  useEffect(() => {
+    let active = true; setProposals(null); setError(null); setOpenIds(new Set());
     void service.getRemediations(scanId).then((result) => { if (active) setProposals(result.proposals); })
       .catch((err) => { if (active) setError(classifyError(err).message); });
     return () => { active = false; };
   }, [scanId, service]);
 
-  const update = (value: RemediationProposal) => setProposals((items) => items?.map((item) => item.proposal_id === value.proposal_id ? value : item) ?? [value]);
+  const update = (value: RemediationProposal) => {
+    setProposals((items) => items?.map((item) => item.proposal_id === value.proposal_id ? value : item) ?? [value]);
+    announceDecision({ scanId, source: "remediation" });
+  };
+  const toggle = (id: string) => setOpenIds((ids) => {
+    const next = new Set(ids);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const count = (status: RemediationProposal["status"]) => proposals?.filter((p) => p.status === status).length ?? 0;
+  const visible = proposals?.filter((p) => filter === "ALL" || p.status === filter) ?? [];
+  const PanelChevron = panelOpen ? ChevronDown : ChevronRight;
+
   return (
-    <Card><CardHeader><CardTitle>Remediation decisions</CardTitle></CardHeader><CardContent className="grid gap-4">
-      <p className="text-sm text-muted-foreground">Approval authorizes this evidence-bound recommendation to advance. It does not apply code, prove the fix, merge, or deploy anything.</p>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {proposals === null && !error && <p className="text-sm text-muted-foreground">Loading proposals...</p>}
-      {proposals?.length === 0 && <p className="text-sm text-muted-foreground">No actionable findings produced remediation proposals.</p>}
-      {proposals?.map((proposal) => (
-        <section key={proposal.proposal_id} className="grid gap-3 rounded-lg border p-4">
-          <div className="flex flex-wrap items-center gap-2"><Badge>{proposal.action}</Badge><Badge variant="outline">{proposal.status}</Badge><code className="text-sm">{proposal.subject_label}</code></div>
-          <p className="font-medium">{proposal.recommendation}</p><p className="text-sm text-muted-foreground">{proposal.rationale}</p>
-          <dl className="grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">Expected risk reduction</dt><dd>{proposal.expected_risk_reduction}</dd></div><div><dt className="text-muted-foreground">Compatibility impact</dt><dd>{proposal.compatibility_impact}</dd></div></dl>
-          {proposal.proposed_value && <p className="text-sm">Version: <code>{proposal.current_value ?? "unknown"}</code> → <code>{proposal.proposed_value}</code></p>}
-          <details className="text-sm"><summary className="cursor-pointer font-medium">Evidence and uncertainty</summary><ul className="mt-2 grid gap-1 text-xs">{proposal.evidence.map((e, i) => <li key={`${e.path}-${i}`}><code>{e.path}</code> · {e.kind} · {e.locator}</li>)}{proposal.uncertainty.map((u) => <li key={u} className="text-muted-foreground">Uncertainty: {u}</li>)}</ul></details>
-          {proposal.status === "PENDING" ? <DecisionForm scanId={scanId} proposal={proposal} service={service} onDecided={update} /> : <DecisionRecord proposal={proposal} />}
-        </section>
-      ))}
-    </CardContent></Card>
+    <Card ref={cardRef} id="remediation-decisions">
+      <CardHeader>
+        <CardTitle>
+          <button
+            type="button"
+            onClick={() => setPanelOpen((v) => !v)}
+            aria-expanded={panelOpen}
+            aria-controls="remediation-decisions-body"
+            className="flex w-full flex-wrap items-center gap-2 text-left"
+          >
+            <PanelChevron className="size-5 text-muted-foreground" aria-hidden />
+            Remediation decisions
+            {proposals && (
+              <span className="flex flex-wrap gap-1.5 text-xs font-normal">
+                <Badge variant="outline" className={STATUS_STYLE.PENDING}>{count("PENDING")} pending</Badge>
+                <Badge variant="outline" className={STATUS_STYLE.APPROVED}>{count("APPROVED")} approved</Badge>
+                <Badge variant="outline" className={STATUS_STYLE.REJECTED}>{count("REJECTED")} rejected</Badge>
+              </span>
+            )}
+          </button>
+        </CardTitle>
+      </CardHeader>
+      {panelMounted && (
+        <CardContent id="remediation-decisions-body" hidden={!panelOpen} className="grid gap-3">
+          <p className="text-sm text-muted-foreground">Approval authorizes this evidence-bound recommendation to advance. It does not apply code, prove the fix, merge, or deploy anything.</p>
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {proposals === null && !error && <p className="text-sm text-muted-foreground">Loading proposals...</p>}
+          {proposals?.length === 0 && <p className="text-sm text-muted-foreground">No actionable findings produced remediation proposals.</p>}
+          {proposals && proposals.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <label className="flex items-center gap-2">
+                Show
+                <select
+                  aria-label="Filter proposals by status"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value as StatusFilter)}
+                  className="rounded-md border bg-background px-2 py-1 text-sm"
+                >
+                  <option value="ALL">All ({proposals.length})</option>
+                  <option value="PENDING">Pending ({count("PENDING")})</option>
+                  <option value="APPROVED">Approved ({count("APPROVED")})</option>
+                  <option value="REJECTED">Rejected ({count("REJECTED")})</option>
+                </select>
+              </label>
+              {openIds.size > 0 && (
+                <Button size="xs" variant="ghost" onClick={() => setOpenIds(new Set())}>Collapse all</Button>
+              )}
+            </div>
+          )}
+          {proposals && proposals.length > 0 && visible.length === 0 && (
+            <p className="text-sm text-muted-foreground">No proposals with this status.</p>
+          )}
+          <ul className="grid gap-2">
+            {visible.map((proposal) => (
+              <ProposalRow
+                key={proposal.proposal_id}
+                scanId={scanId}
+                proposal={proposal}
+                service={service}
+                open={openIds.has(proposal.proposal_id)}
+                onToggle={() => toggle(proposal.proposal_id)}
+                onDecided={update}
+              />
+            ))}
+          </ul>
+        </CardContent>
+      )}
+    </Card>
   );
 }

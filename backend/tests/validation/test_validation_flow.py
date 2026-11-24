@@ -613,3 +613,20 @@ def test_fresh_lock_note_is_reported(roots: Path) -> None:
         r for r in result.residual_risks if r.startswith("The original lockfile was unreadable")
     )
     assert "httpx (.): 0.27.0 → 0.28.1" in note and "qs (" not in note.split(":", 1)[1]
+
+
+def test_start_runtime_endpoint(client: TestClient, monkeypatch) -> None:
+    from app.validation import sandbox
+
+    monkeypatch.setattr(
+        validation_routes.sandbox, "start_runtime", lambda: "Podman machine started"
+    )
+    ok = client.post("/api/v1/sandbox/runtime/start")
+    assert ok.status_code == 200 and "container_runtime" in ok.json()
+
+    def missing():
+        raise sandbox.SandboxError("No container runtime is installed. Install Podman")
+
+    monkeypatch.setattr(validation_routes.sandbox, "start_runtime", missing)
+    refused = client.post("/api/v1/sandbox/runtime/start")
+    assert refused.status_code == 503 and refused.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"

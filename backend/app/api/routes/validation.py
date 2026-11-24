@@ -13,8 +13,13 @@ from app.database.models import ValidationRunRow
 from app.database.session import get_db, session_factory
 from app.ingestion.worker import scan_capacity
 from app.schemas.scan import ScanStatus
-from app.schemas.validation import ValidationOverview, ValidationRun, ValidationStartRequest
-from app.validation import service
+from app.schemas.validation import (
+    SandboxInfo,
+    ValidationOverview,
+    ValidationRun,
+    ValidationStartRequest,
+)
+from app.validation import github, sandbox, service
 
 router = APIRouter(tags=["validation"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -39,7 +44,7 @@ def get_validations(scan_id: str, db: DatabaseSession) -> ValidationOverview:
     scan = _completed(db, scan_id)
     try:
         candidates = service.candidates(db, settings, scan)
-        runs = [service.to_api(r) for r in service.list_runs(db, scan_id)]
+        runs = [service.to_api(r, settings) for r in service.list_runs(db, scan_id)]
     except SQLAlchemyError:
         raise _database_unavailable() from None
     except (OSError, ValueError):
@@ -89,7 +94,7 @@ def start_validation(
         row.validation_id,
         release=scan_capacity.release,
     )
-    return service.to_api(row)
+    return service.to_api(row, settings)
 
 
 @router.get(
@@ -104,4 +109,87 @@ def get_validation(scan_id: str, validation_id: str, db: DatabaseSession) -> Val
         raise ApiProblem(
             status=404, code="VALIDATION_NOT_FOUND", message="No such validation", scan_id=scan_id
         )
-    return service.to_api(row)
+    return service.to_api(row, settings)
+
+
+@router.post(
+    "/scans/{scan_id}/validations/{validation_id}/pull-request",
+    response_model=ValidationRun,
+    responses=ERROR_RESPONSES,
+)
+def open_pull_request(
+    scan_id: str,
+    validation_id: str,
+    db: DatabaseSession,
+) -> ValidationRun:
+    """Open a GitHub pull request with the exact sandbox-tested patch. Never merges it."""
+    scan = _completed(db, scan_id)
+    row = db.get(ValidationRunRow, validation_id)
+    if row is None or row.scan_id != scan_id:
+        raise ApiProblem(
+            status=404, code="VALIDATION_NOT_FOUND", message="No such validation", scan_id=scan_id
+        )
+    if row.pull_request_json:
+        return service.to_api(row, settings)
+    if not settings.github_token:
+        raise ApiProblem(
+            status=503,
+            code="GITHUB_NOT_CONFIGURED",
+            message="Set GITHUB_TOKEN in .env to open pull requests",
+            scan_id=scan_id,
+        )
+    result = service.ValidationResult.model_validate(row.result_json) if row.result_json else None
+    if (
+        result is None
+        or result.verdict not in service.PR_VERDICTS
+        or result.tests_status == "regression"
+    ):
+        raise ApiProblem(
+            status=409,
+            code="NOT_PR_READY",
+            message="Only a validation with the verdict FIXED (and no test regression) can be "
+            "turned into a pull request",
+            scan_id=scan_id,
+        )
+    files = service.patch_files(settings, row)
+    if not files or not scan.commit_sha:
+        raise ApiProblem(
+            status=409,
+            code="PATCH_UNAVAILABLE",
+            message="This validation has no saved patch; run the validation again",
+            scan_id=scan_id,
+        )
+    findings = {f.finding_id: f for f in service.load_findings(settings, scan).findings}
+    change = service.ValidationChange.model_validate(row.change_json)
+    finding = findings.get(change.finding_id)
+    try:
+        pull = github.open_pull_request(
+            github.make_request(settings.github_token.get_secret_value(), settings.github_api_url),
+            owner=scan.owner,
+            repo=scan.repository_name,
+            base_commit=scan.commit_sha,
+            base_branch=scan.resolved_ref,
+            files=files,
+            change=change,
+            result=result,
+            finding_title=finding.title if finding else change.finding_id,
+            scan_id=scan_id,
+            validation_id=validation_id,
+        )
+    except github.GitHubError as exc:
+        raise ApiProblem(
+            status=502, code="GITHUB_ERROR", message=str(exc), scan_id=scan_id
+        ) from None
+    row.pull_request_json = pull.model_dump(mode="json")
+    db.commit()
+    return service.to_api(row, settings)
+
+
+@router.post("/sandbox/runtime/start", response_model=SandboxInfo, responses=ERROR_RESPONSES)
+def start_container_runtime() -> SandboxInfo:
+    """Start the local Podman machine so validations can run tests in a container."""
+    try:
+        sandbox.start_runtime()
+    except sandbox.SandboxError as exc:
+        raise ApiProblem(status=503, code="RUNTIME_UNAVAILABLE", message=str(exc)) from None
+    return service.sandbox_info(settings)

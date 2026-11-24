@@ -1,5 +1,6 @@
 "use client";
 
+import { announceDecision } from "@/lib/decisionEvents";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, ExternalLink, Loader2, RotateCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -334,6 +335,7 @@ export default function AiAnalysisPanel({ scanId, findingId, status, client }: P
     setError(null);
     try {
       const decided = await client.decide(scanId, analysis.analysis_id, body);
+      announceDecision({ scanId, source: "ai" });
       resetFeedbackForm();
       if (decided.next_analysis_id) {
         const next = await client.get(scanId, decided.next_analysis_id);

@@ -193,6 +193,7 @@ def render_html(report: dict) -> str:
   <p class="small muted">Validation {e(v["validation_id"])} · source: {e(change["source_type"])} {e(change["source_id"])}
   · approved by {e(change["approved_by"])} · finished {e(v["finished_at"])}</p>
   <p>{e(result.get("verdict_reason") or v.get("error"))}</p>
+  {('<p><strong>Pull request:</strong> <a href="' + escape(v['pull_request']['url'], quote=True) + '">#' + e(v['pull_request']['number']) + '</a> on <code>' + e(v['pull_request']['branch']) + '</code> → <code>' + e(v['pull_request']['base']) + '</code> (awaiting human review and merge)</p>') if v.get('pull_request') else ''}
   <h4>Steps</h4><ul class="steps">{steps or '<li class="muted">No steps recorded</li>'}</ul>
   <h4>Proposed change (diff)</h4>{diffs or '<p class="muted">No file changes</p>'}
   <h4>Build and tests</h4><ul class="steps">{tests or '<li class="muted">Not run</li>'}</ul>

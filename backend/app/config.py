@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     validation_container_runtime: str | None = None  # "podman" | "docker"; unset: auto-detect
     validation_test_timeout_seconds: PositiveInt = 900
     validation_lock_timeout_seconds: PositiveInt = 300
+    # Pull requests for validated fixes (never merged by Kestral). Fine-grained token with
+    # Contents: read/write and Pull requests: read/write on the target repository.
+    github_token: SecretStr | None = None
+    github_api_url: str = "https://api.github.com"
     max_active_scans: PositiveInt = 1
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65_535)

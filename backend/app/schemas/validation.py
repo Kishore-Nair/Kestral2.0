@@ -126,6 +126,16 @@ class ValidationResult(StrictModel):
     residual_risks: list[str]
 
 
+class PullRequestInfo(StrictModel):
+    """A pull request Kestral opened for a validated fix. Merging is always a human action."""
+
+    url: str
+    number: int
+    branch: str
+    base: str
+    created_at: datetime
+
+
 class ValidationRun(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
     validation_id: str
@@ -136,6 +146,8 @@ class ValidationRun(StrictModel):
     created_at: datetime
     finished_at: datetime | None
     result: ValidationResult | None
+    pull_request: PullRequestInfo | None = None
+    patch_available: bool = False
 
 
 class SandboxInfo(StrictModel):
@@ -143,6 +155,7 @@ class SandboxInfo(StrictModel):
     tests_enabled: bool
     npm_available: bool
     notes: list[str]
+    github_configured: bool = False
 
 
 class ValidationStartRequest(StrictModel):

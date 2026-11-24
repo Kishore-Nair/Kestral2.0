@@ -7,6 +7,7 @@ before/after comparison -> verdict. The original scan, its artifacts and the ups
 repository are never modified.
 """
 
+import json
 import logging
 import shutil
 import time
@@ -33,6 +34,7 @@ from app.schemas.dependency import DependencyDocument
 from app.schemas.findings import FindingsDocument
 from app.schemas.validation import (
     FileDiff,
+    PullRequestInfo,
     SandboxInfo,
     TestRun,
     ValidationCandidate,
@@ -45,6 +47,8 @@ from app.validation import compare, patching, sandbox
 
 logger = logging.getLogger(__name__)
 SUPPORTED_ECOSYSTEMS = {"pypi", "npm"}
+PATCH_DIR = "patch"
+PR_VERDICTS = {"FIXED"}
 SUPPORTED_ACTIONS = {"upgrade", "pin"}
 
 
@@ -88,6 +92,7 @@ def sandbox_info(settings: Settings) -> SandboxInfo:
     if not runtime:
         notes.append("Without a container, uv.lock files cannot be regenerated")
     return SandboxInfo(
+        github_configured=bool(settings.github_token),
         container_runtime=runtime,
         tests_enabled=bool(runtime and settings.validation_run_tests),
         npm_available=sandbox.npm_available(),
@@ -238,7 +243,40 @@ def start(
     return row
 
 
-def to_api(row: ValidationRunRow) -> ValidationRun:
+def save_patch(repo: Path, original: dict[str, str | None], target: Path) -> list[str]:
+    """Keep the exact patched files (the sandbox is deleted) so a PR carries the tested bytes."""
+    saved = []
+    for rel, before in sorted(original.items()):
+        path = repo / rel
+        after = path.read_text(encoding="utf-8") if path.is_file() else None
+        if after is None or after == before:
+            continue
+        destination = (target / rel).resolve()
+        destination.relative_to(target.resolve())
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(after, encoding="utf-8")
+        saved.append(rel)
+    (target.parent / "patch.json").write_text(json.dumps({"files": saved}), encoding="utf-8")
+    return saved
+
+
+def patch_files(settings: Settings, row: ValidationRunRow) -> dict[str, str]:
+    """{repo-relative path: patched content} saved by a completed validation."""
+    base = settings.scan_output_root / row.scan_id / "validations" / row.validation_id
+    try:
+        listed = json.loads((base / "patch.json").read_text(encoding="utf-8"))["files"]
+    except (OSError, ValueError, KeyError):
+        return {}
+    out = {}
+    root = (base / PATCH_DIR).resolve()
+    for rel in listed:
+        path = (root / rel).resolve()
+        path.relative_to(root)
+        out[rel] = path.read_text(encoding="utf-8")
+    return out
+
+
+def to_api(row: ValidationRunRow, settings: Settings | None = None) -> ValidationRun:
     return ValidationRun(
         validation_id=row.validation_id,
         scan_id=row.scan_id,
@@ -248,6 +286,10 @@ def to_api(row: ValidationRunRow) -> ValidationRun:
         created_at=row.created_at,
         finished_at=row.finished_at,
         result=ValidationResult.model_validate(row.result_json) if row.result_json else None,
+        pull_request=PullRequestInfo.model_validate(row.pull_request_json)
+        if row.pull_request_json
+        else None,
+        patch_available=bool(settings and patch_files(settings, row)),
     )
 
 
@@ -479,6 +521,7 @@ def execute(
                 "the fix was not tested"
             )
         diffs = [FileDiff(**d) for d in patching.unified_diffs(repo, original)]
+        save_patch(repo, original, output / PATCH_DIR)
 
         # 4. Project tests in a container, before and after
         t = time.monotonic()

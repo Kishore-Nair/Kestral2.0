@@ -196,8 +196,7 @@ def regenerate_uv_lock_in_container(
         raise SandboxError("uv produced an unreadable lockfile") from exc
     (project_dir / "uv.lock").write_text(completed.stdout, encoding="utf-8")
     note = (
-        "; the existing uv.lock could not be read, so a fresh lock was resolved from "
-        "pyproject.toml"
+        "; the existing uv.lock could not be read, so a fresh lock was resolved from pyproject.toml"
         if FRESH_LOCK in completed.stderr
         else ""
     )
@@ -236,6 +235,49 @@ def container_runtime(preferred: str | None = None) -> str | None:
         if probe.returncode == 0:
             return name
     return None
+
+
+def start_runtime(timeout: int = 240) -> str:
+    """Start the local Podman machine (macOS/Windows). Fixed command, no user input.
+
+    Docker Desktop cannot be started this way; Kestral reports that instead of guessing.
+    """
+    if container_runtime():
+        return "A container runtime is already running"
+    podman = shutil.which("podman")
+    if podman is None:
+        if shutil.which("docker"):
+            raise SandboxError("Docker is installed but not running; start Docker Desktop")
+        raise SandboxError(
+            "No container runtime is installed. Install Podman: brew install podman && "
+            "podman machine init"
+        )
+    machines = subprocess.run(
+        [podman, "machine", "list", "--format", "{{.Name}}"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        stdin=subprocess.DEVNULL,
+    )
+    if machines.returncode != 0 or not machines.stdout.strip():
+        raise SandboxError("Podman has no machine yet. Run once: podman machine init")
+    try:
+        started = subprocess.run(
+            [podman, "machine", "start"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SandboxError("Podman took too long to start; try again") from exc
+    if started.returncode != 0 and "already running" not in (started.stderr + started.stdout):
+        raise SandboxError(
+            f"Podman could not start: {tool_error(started.stderr or started.stdout)}"
+        )
+    if not container_runtime():
+        raise SandboxError("Podman started but is not responding yet; check again in a moment")
+    return "Podman machine started"
 
 
 @dataclass(frozen=True)

@@ -171,3 +171,4 @@ class ValidationRunRow(Base):
         DateTime(timezone=True), nullable=False, default=utc_now
     )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pull_request_json: Mapped[dict | None] = mapped_column(JSON)
