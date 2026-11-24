@@ -133,7 +133,12 @@ export default function Home() {
 
         {graph && <StatsBar stats={graph.meta.stats} />}
 
-        {scan?.status === "COMPLETED" && (
+        {scan?.status === "FAILED" && (
+          <p role="note" className="text-sm text-muted-foreground">
+            This scan failed. Available artifacts below contain evidence from completed stages; missing artifacts remain unavailable.
+          </p>
+        )}
+        {(scan?.status === "COMPLETED" || scan?.status === "FAILED") && (
           <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
             <aside aria-label="Artifacts" className="grid content-start gap-4">
               <Card size="sm">

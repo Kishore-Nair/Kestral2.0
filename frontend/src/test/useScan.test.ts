@@ -65,7 +65,21 @@ describe("useScan", () => {
     expect(result.current.scan?.error).toBe("Clone failed");
     await advance(POLL_INTERVAL_MS * 5);
     expect(service.getScan).toHaveBeenCalledTimes(2);
-    expect(service.getGraph).not.toHaveBeenCalled();
+    expect(service.getGraph).toHaveBeenCalledTimes(1);
+    expect(result.current.artifacts.graph.status).toBe("ready");
+  });
+
+  it("preserves completed artifacts when a failed scan has missing later artifacts", async () => {
+    const service = makeService(["FAILED"]);
+    service.getFindings = vi.fn().mockRejectedValue(httpError(409));
+    const { result } = renderHook(() => useScan("scan_partial", service));
+    await advance(0);
+    await advance(0);
+    expect(result.current.scan?.status).toBe("FAILED");
+    expect(result.current.artifacts.inventory.status).toBe("ready");
+    expect(result.current.artifacts.sbom.status).toBe("ready");
+    expect(result.current.artifacts.graph.status).toBe("ready");
+    expect(result.current.artifacts.findings).toMatchObject({ status: "error", error: { kind: "not_ready" } });
   });
 
   it("never overlaps requests: one in-flight poll at a time", async () => {

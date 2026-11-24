@@ -1,5 +1,27 @@
 # Software Supply Chain Guardian
 
+## Implementation status (24 November 2026)
+
+The integrated worker now performs ingestion, discovery, SBOM normalization,
+graph construction, risk analysis and remediation proposal generation. The
+frontend exposes graph exploration, findings, AI analysis and recorded human
+decisions. Failed scans retain access to artifacts from completed stages.
+
+The original blueprint below contains historical phase descriptions. In
+particular, Grype/OSV adapters and AI analysis now exist in the source; their
+availability depends on configuration, tools and provider access. Their presence
+does not establish a successful live scan.
+
+Day 2 execution remains incomplete: approval records a decision; it does not
+apply changes, build, test or rescan. AI validation checks recommendation evidence,
+not post-change application behavior. Provenance and policy modules are standalone
+capabilities with proposed worker/API/frontend integration, as documented in
+`docs/provenance-policy/INTEGRATION.md`; they are not scan-wide enforced gates.
+
+For a fresh backend environment use Python 3.12 as required by
+`backend/pyproject.toml`. On Windows PowerShell, `npm.cmd` can be used when the
+execution policy prevents loading `npm.ps1`; changing the policy is unnecessary.
+
 > **Know What You Build. Trust What You Ship.**  
 > Bosch / Amrita hackathon · implementation blueprint v1.0 · 23 November 2026
 

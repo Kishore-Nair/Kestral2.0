@@ -105,10 +105,10 @@ export function useScan(scanId: string | null, service: ScanApi = defaultService
     };
   }, [scanId, service, pollRun]);
 
-  const completed = scan?.status === "COMPLETED" && scan.scan_id === scanId;
+  const terminal = (scan?.status === "COMPLETED" || scan?.status === "FAILED") && scan.scan_id === scanId;
 
   useEffect(() => {
-    if (!scanId || !completed) return;
+    if (!scanId || !terminal) return;
     let stopped = false;
     setArtifacts({
       inventory: { status: "loading" },
@@ -143,7 +143,7 @@ export function useScan(scanId: string | null, service: ScanApi = defaultService
     return () => {
       stopped = true;
     };
-  }, [scanId, completed, service, artifactRun]);
+  }, [scanId, terminal, service, artifactRun]);
 
   const retryPolling = useCallback(() => setPollRun((n) => n + 1), []);
   const retryArtifacts = useCallback(() => setArtifactRun((n) => n + 1), []);
