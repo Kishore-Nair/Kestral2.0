@@ -22,15 +22,15 @@ const RUN: ValidationRun = {
   result: {
     verdict: "FIXED",
     verdict_reason: "The rescan no longer reports the original vulnerability",
-    tests_status: "no_tests",
-    tests_detail: "No test suite was found for the changed project",
+    tests_status: "passed",
+    tests_detail: "Regression tests passed in the container",
     sandbox_commit: "a".repeat(40),
     steps: [
       { id: "sandbox", label: "Isolated checkout of the scanned commit", status: "passed", detail: "Fresh clone", duration_ms: 10 },
-      { id: "tests", label: "Build and run project tests", status: "warning", detail: "No tests", duration_ms: 10 },
+      { id: "tests", label: "Build and run project tests", status: "passed", detail: "Regression tests passed", duration_ms: 10 },
     ],
     diffs: [{ path: "examples/celery/requirements.txt", lines_added: 1, lines_removed: 1, diff: "-werkzeug==2.3.3\n+werkzeug==3.0.3\n", truncated: false }],
-    tests: [{ phase: "patched", status: "no_tests", runtime: "podman", image: "python:3.12-slim", command: "pytest", exit_code: 0, duration_s: 12, output_tail: "KESTRAL_NO_TESTS" }],
+    tests: [{ phase: "patched", status: "passed", runtime: "podman", image: "python:3.12-slim", command: "pytest", exit_code: 0, duration_s: 12, output_tail: "3 passed" }],
     comparison: {
       target_resolved: true, target_remaining: [], resolved: [], introduced: [], introduced_suspicious: [],
       before_counts: { critical: 4, high: 30 }, after_counts: { critical: 3, high: 28 },
@@ -119,6 +119,24 @@ describe("ReportDownload", () => {
 
 describe("Pull request action", () => {
   const ready = { ...RUN, patch_available: true };
+
+  it("does not offer a PR for a legacy FIXED record without passing tests", async () => {
+    const untested = { ...ready, result: { ...RUN.result!, tests_status: "not_run" as const } };
+    render(<ValidationPanel scanId="scan_test" client={fakeClient({ overview: vi.fn(async () => overview({ runs: [untested] })) })} />);
+    await screen.findByText("Fix verified in sandbox");
+    expect(screen.queryByRole("button", { name: /Open pull request/ })).toBeNull();
+  });
+
+  it("shows actual completed stages while the validation is still running", async () => {
+    const running = { ...RUN, status: "running" as const, result: null, progress: [
+      { id: "lockfile", label: "Regenerate the lockfile", status: "passed" as const,
+        detail: "Resolved inside the container", duration_ms: 1200 },
+    ] };
+    const view = render(<ValidationPanel scanId="scan_test" client={fakeClient({ overview: vi.fn(async () => overview({ runs: [running] })) })} />);
+    expect(await screen.findByText("Regenerate the lockfile")).toBeInTheDocument();
+    expect(screen.getByText("Resolved inside the container")).toBeInTheDocument();
+    view.unmount();
+  });
 
   it("opens a pull request for a FIXED validation when GitHub is configured", async () => {
     let runs = [ready];
@@ -219,9 +237,11 @@ describe("Sandbox panel buttons", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Copy diff/ })[0]);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("-werkzeug==2.3.3\n+werkzeug==3.0.3\n"));
 
+    expect(screen.queryByLabelText("Validation val_0")).toBeNull();
+    expect(screen.getByText(/Earlier attempts remain available in the audit report/)).toBeInTheDocument();
     const toggles = screen.getAllByRole("button", { name: /details/ });
+    expect(toggles).toHaveLength(1);
     expect(toggles[0]).toHaveTextContent("Hide details"); // newest run starts open
-    expect(toggles[1]).toHaveTextContent("Show details"); // older run starts collapsed
     fireEvent.click(toggles[0]);
     expect(screen.getAllByRole("button", { name: /details/ })[0]).toHaveTextContent("Show details");
   });

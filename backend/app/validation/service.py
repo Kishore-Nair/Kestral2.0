@@ -9,7 +9,9 @@ repository are never modified.
 
 import json
 import logging
+import os
 import shutil
+import stat
 import time
 import uuid
 from collections.abc import Callable
@@ -29,6 +31,7 @@ from app.database.models import (
 )
 from app.ingestion.artifacts import save_validated_json
 from app.ingestion.url_validation import ValidatedRepository
+from app.remediation.generator import generate_proposal
 from app.risk.changes import Baseline
 from app.schemas.dependency import DependencyDocument
 from app.schemas.findings import FindingsDocument
@@ -121,7 +124,23 @@ def candidates(db: Session, settings: Settings, scan: Scan) -> list[ValidationCa
         finding = findings.get(proposal.finding_id)
         component = components.get(finding.subject_id or "") if finding else None
         reason = None
-        if proposal.action not in SUPPORTED_ACTIONS or not proposal.proposed_value:
+        generated = generate_proposal(finding, scan.scan_id) if finding else None
+        if (
+            decision is None
+            or decision.decision != "APPROVED"
+            or not decision.decided_by
+            or generated is None
+            or decision.repository_commit != scan.commit_sha
+            or proposal.repository_commit != scan.commit_sha
+            or decision.proposal_digest != proposal.proposal_digest
+            or decision.finding_digest != proposal.finding_digest
+            or generated.proposal_digest != proposal.proposal_digest
+            or generated.finding_digest != proposal.finding_digest
+            or generated.proposed_value != proposal.proposed_value
+            or generated.action != proposal.action
+        ):
+            reason = "Human approval is absent or does not match the current proposal and evidence"
+        elif proposal.action not in SUPPORTED_ACTIONS or not proposal.proposed_value:
             reason = "Only approved version upgrades with one target version can be applied"
         elif component is None:
             reason = "The finding's package is not in this scan's inventory"
@@ -277,6 +296,19 @@ def patch_files(settings: Settings, row: ValidationRunRow) -> dict[str, str]:
 
 
 def to_api(row: ValidationRunRow, settings: Settings | None = None) -> ValidationRun:
+    progress = []
+    if settings:
+        progress_file = (
+            settings.scan_output_root
+            / row.scan_id
+            / "validations"
+            / row.validation_id
+            / "progress.json"
+        )
+        if progress_file.is_file():
+            progress = [
+                ValidationStep.model_validate(s) for s in json.loads(progress_file.read_text())
+            ]
     return ValidationRun(
         validation_id=row.validation_id,
         scan_id=row.scan_id,
@@ -290,6 +322,7 @@ def to_api(row: ValidationRunRow, settings: Settings | None = None) -> Validatio
         if row.pull_request_json
         else None,
         patch_available=bool(settings and patch_files(settings, row)),
+        progress=progress,
     )
 
 
@@ -311,6 +344,7 @@ def list_runs(db: Session, scan_id: str) -> list[ValidationRunRow]:
 class _Steps:
     def __init__(self) -> None:
         self.items: list[ValidationStep] = []
+        self.progress_path: Path | None = None
 
     def add(self, step_id: str, label: str, status: str, detail: str, started: float) -> None:
         self.items.append(
@@ -322,6 +356,12 @@ class _Steps:
                 duration_ms=int((time.monotonic() - started) * 1000),
             )
         )
+        if self.progress_path:
+            temporary = self.progress_path.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps([s.model_dump(mode="json") for s in self.items]), encoding="utf-8"
+            )
+            temporary.replace(self.progress_path)
 
 
 def _pipeline():
@@ -361,6 +401,7 @@ def execute(
     output = (_scan_dir(settings, scan) / "validations" / validation_id).resolve()
     workspace.mkdir(parents=True, exist_ok=False)
     output.mkdir(parents=True, exist_ok=False)
+    steps.progress_path = output / "progress.json"
 
     def failed(reason: str) -> ValidationResult:
         return ValidationResult(
@@ -543,6 +584,13 @@ def execute(
             timeout = settings.validation_test_timeout_seconds
             for phase, directory in (("baseline", baseline_copy), ("patched", project)):
                 outcome = test_runner(runtime, plan, directory, timeout)
+                steps.add(
+                    f"tests-{phase}",
+                    f"{phase.capitalize()} build and tests",
+                    "passed" if outcome["status"] == "passed" else "warning",
+                    f"{outcome['status']}; {plan.description}",
+                    t,
+                )
                 tests.append(
                     TestRun(
                         phase=phase,
@@ -604,8 +652,10 @@ def execute(
             "rescan",
             "Rescan the patched copy",
             "passed",
-            f"Discovery, SBOM, graph, OSV/Grype/NVD and supply-chain checks re-ran: "
-            f"{after.stats.vulnerabilities} vulnerabilities, {after.stats.suspicious} suspicious",
+            "Discovery, SBOM and graph regenerated. Source coverage: "
+            + ", ".join(f"{s.name}: {s.status}" for s in after.sources)
+            + f"; {after.stats.vulnerabilities} vulnerabilities, "
+            f"{after.stats.suspicious} suspicious",
             t,
         )
 
@@ -666,7 +716,16 @@ def execute(
             residual_risks=list(dict.fromkeys(residual))[:40],
         )
     finally:
-        shutil.rmtree(workspace, ignore_errors=True)
+        def remove_readonly(function, path, error):
+            if not isinstance(error, PermissionError):
+                raise error
+            os.chmod(path, stat.S_IWRITE)
+            function(path)
+
+        # Windows Git object files can be read-only. Never silently report success
+        # when a disposable checkout could not actually be removed.
+        workspace.relative_to(settings.workspace_root.resolve())
+        shutil.rmtree(workspace, onexc=remove_readonly)
 
 
 def _not_run(phase: str, reason: str) -> TestRun:
@@ -699,7 +758,9 @@ def run_validation(
             row.status = "running"
             db.commit()
             try:
-                change = ValidationChange.model_validate(row.change_json)
+                change = resolve_change(db, settings, scan, row.source_type, row.source_id)
+                if change.model_dump(mode="json") != row.change_json:
+                    raise ValidationError("APPROVAL_CHANGED", "Approval changed after queuing")
                 result = execute(settings, scan, change, validation_id, row.run_tests, **overrides)
                 row.result_json = result.model_dump(mode="json")
                 row.verdict = result.verdict

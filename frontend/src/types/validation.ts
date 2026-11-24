@@ -86,6 +86,7 @@ export interface ValidationRun {
   result: ValidationResult | null;
   pull_request?: PullRequestInfo | null;
   patch_available?: boolean;
+  progress?: ValidationStep[];
 }
 export interface SandboxInfo {
   container_runtime: string | null;

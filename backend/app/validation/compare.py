@@ -68,16 +68,35 @@ def compare_findings(
 ) -> Comparison:
     before_v = [f for f in before.findings if f.kind == "vulnerability"]
     after_v = [f for f in after.findings if f.kind == "vulnerability"]
-    remaining = [f for f in after_v if _same_vulnerability(target, before_doc, f, after_doc)]
+    before_projects = {c.component_id: c.project_path for c in before_doc.components}
+    after_projects = {c.component_id: c.project_path for c in after_doc.components}
+
+    def key(finding, projects):
+        return (_package(finding), projects.get(finding.subject_id))
+
+    def index(findings, projects):
+        result = {}
+        for finding in findings:
+            result.setdefault(key(finding, projects), set()).update(finding.advisory_ids)
+        return result
+
+    before_ids = index(before_v, before_projects)
+    after_ids = index(after_v, after_projects)
+    remaining = [
+        f
+        for f in after_v
+        if key(f, after_projects) == key(target, before_projects)
+        and set(f.advisory_ids) & set(target.advisory_ids)
+    ]
     resolved = [
         f
         for f in before_v
-        if not any(_same_vulnerability(f, before_doc, g, after_doc) for g in after_v)
+        if not set(f.advisory_ids) & after_ids.get(key(f, before_projects), set())
     ]
     introduced = [
         g
         for g in after_v
-        if not any(_same_vulnerability(f, before_doc, g, after_doc) for f in before_v)
+        if not set(g.advisory_ids) & before_ids.get(key(g, after_projects), set())
     ]
     before_s = {(f.category, f.subject_label) for f in before.findings if f.kind == "suspicious"}
     introduced_s = [
@@ -97,7 +116,23 @@ def compare_findings(
             changed.append(
                 f"{item.name} ({item.project_path or '.'}): {before_v_text} → {after_v_text}"
             )
-    target_kind_ok = target.kind == "vulnerability"
+    required_sources = {s.name for s in target.sources if s.name in {"OSV", "Grype"}}
+    completed_sources = {s.name for s in after.sources if s.status == "ok"}
+    target_components = [
+        c
+        for c in after_doc.components
+        if c.name.lower() == _package(target) and c.project_path == _project_of(before_doc, target)
+    ]
+    target_kind_ok = (
+        target.kind == "vulnerability"
+        and bool(required_sources)
+        and required_sources <= completed_sources
+        and bool(target_components)
+        and all(c.resolved and c.version and c.purl for c in target_components)
+    )
+    # A missing scanner or partial query is not evidence of vulnerability removal.
+    if not target_kind_ok:
+        resolved = []
     return Comparison(
         target_resolved=(not remaining) if target_kind_ok else None,
         target_remaining=[_ref(f) for f in remaining],
@@ -132,6 +167,8 @@ def tests_outcome(runs: list[TestRun]) -> tuple[str, str]:
 
 
 def verdict(comparison: Comparison, tests_status: str) -> tuple[str, str]:
+    if comparison.target_resolved is None:
+        return "FAILED", "Target remediation could not be established by comparison"
     if comparison.target_resolved is False:
         return "NOT_FIXED", "The rescan still reports the original vulnerability"
     new_high = [r for r in comparison.introduced if r.level in HIGH_BANDS]
@@ -144,4 +181,5 @@ def verdict(comparison: Comparison, tests_status: str) -> tuple[str, str]:
     resolved = "The rescan no longer reports the original vulnerability"
     if tests_status == "passed":
         return "FIXED", f"{resolved}; the project's tests pass in the container"
-    return "FIXED", f"{resolved}; project tests: {tests_status.replace('_', ' ')}"
+    detail = tests_status.replace("_", " ")
+    return "FAILED", f"{resolved}; validation incomplete: project tests {detail}"

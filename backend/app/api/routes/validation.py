@@ -142,7 +142,7 @@ def open_pull_request(
     if (
         result is None
         or result.verdict not in service.PR_VERDICTS
-        or result.tests_status == "regression"
+        or result.tests_status != "passed"
     ):
         raise ApiProblem(
             status=409,

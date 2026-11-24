@@ -148,6 +148,7 @@ class ValidationRun(StrictModel):
     result: ValidationResult | None
     pull_request: PullRequestInfo | None = None
     patch_available: bool = False
+    progress: list[ValidationStep] = Field(default_factory=list)
 
 
 class SandboxInfo(StrictModel):

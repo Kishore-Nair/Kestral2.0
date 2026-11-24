@@ -61,7 +61,7 @@ function PullRequestAction({
       </p>
     );
   }
-  const eligible = run.result?.verdict === "FIXED" && run.result.tests_status !== "regression";
+  const eligible = run.result?.verdict === "FIXED" && run.result.tests_status === "passed";
   if (!eligible) return null;
   if (!run.patch_available) {
     return <p className="text-xs text-muted-foreground">Run this validation again to open a pull request (no saved patch).</p>;
@@ -83,7 +83,15 @@ function PullRequestAction({
 function RunDetails({ run }: { run: ValidationRun }) {
   const result = run.result;
   if (!result) {
-    return run.error ? <p role="alert" className="text-rose-800 dark:text-rose-300">{run.error}</p> : null;
+    return <div aria-live="polite" className="grid gap-2 text-xs">
+      {run.error && <p role="alert" className="text-rose-800 dark:text-rose-300">{run.error}</p>}
+      <ol className="grid gap-2">{(run.progress ?? []).map(s => (
+        <li key={s.id}>
+          <Badge variant="outline" className={STEP_STYLE[s.status]}>{s.status}</Badge>{" "}
+          <strong>{s.label}</strong><p className="text-muted-foreground">{s.detail}</p>
+        </li>
+      ))}</ol>
+    </div>;
   }
   const c = result.comparison;
   const rows = ["critical", "high", "medium", "low", "suspicious", "workflow_pins"];
@@ -123,6 +131,7 @@ function RunDetails({ run }: { run: ValidationRun }) {
             <summary className="cursor-pointer">
               {t.phase}: {t.status.replace("_", " ")} {t.runtime && <span className="text-muted-foreground">· {t.runtime} · {t.image} · {t.duration_s}s</span>}
             </summary>
+            <p className="text-muted-foreground">{t.command}</p>
             <pre className="mt-1 max-h-60 overflow-auto rounded bg-slate-950 p-2 text-[11px] text-slate-100">{t.output_tail}</pre>
           </details>
         ))}
@@ -308,7 +317,15 @@ export default function ValidationPanel({ scanId, client = validationService }: 
   const runtime = overview?.sandbox.container_runtime ?? null;
   const testsAvailable = Boolean(runtime) && runTests;
   const reportUrl = client.reportUrl(scanId, "html", false);
-  const latestRunId = overview?.runs[0]?.validation_id;
+  const latestRuns = overview?.runs.filter(
+    (run, index, runs) =>
+      runs.findIndex(
+        (candidate) =>
+          candidate.change.source_type === run.change.source_type &&
+          candidate.change.source_id === run.change.source_id,
+      ) === index,
+  ) ?? [];
+  const latestRunId = latestRuns[0]?.validation_id;
   const lastRunFor = (c: ValidationCandidate) =>
     overview?.runs.find((r) => r.change.source_type === c.source_type && r.change.source_id === c.source_id);
   const candidateFor = (run: ValidationRun) =>
@@ -442,7 +459,10 @@ export default function ValidationPanel({ scanId, client = validationService }: 
       {overview && overview.runs.length > 0 && (
         <div className="grid gap-2">
           <h3 className="text-sm font-medium">Validation runs</h3>
-          {overview.runs.map((run) => {
+          <p className="text-xs text-muted-foreground">
+            Latest result for each approved change. Earlier attempts remain available in the audit report.
+          </p>
+          {latestRuns.map((run) => {
             const isOpen = openRuns.has(run.validation_id) || (run.validation_id === latestRunId && !openRuns.has(`closed:${run.validation_id}`));
             const Chevron = isOpen ? ChevronDown : ChevronRight;
             const candidate = candidateFor(run);

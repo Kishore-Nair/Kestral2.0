@@ -61,10 +61,16 @@ def fixed_result(roots: Path) -> ValidationResult:
         make_scan(),
         CHANGE,
         VID,
-        False,
+        True,
         checkout=fake_checkout,
         pipeline=fake_pipeline(),
-        runtime_probe=lambda _p: None,
+        runtime_probe=lambda _p: "docker",
+        test_runner=lambda *args: {
+            "status": "passed",
+            "exit_code": 0,
+            "duration_s": 0.1,
+            "output_tail": "fixture: regression tests passed",
+        },
         lock_regenerator=lambda p, t: "npm install --package-lock-only",
     )
 

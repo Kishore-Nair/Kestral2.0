@@ -89,7 +89,8 @@ def test_package_json_direct_and_transitive(tmp_path: Path) -> None:
         direct=True,
     )
     manifest = json.loads((tmp_path / "package.json").read_text())
-    assert manifest["dependencies"]["express"] == "~4.21.2"
+    assert manifest["dependencies"]["express"] == "4.21.2"
+    assert manifest["overrides"]["express"] == "$express"
     assert result.lockfiles == ["package-lock.json"]
     assert (
         (tmp_path / "package.json").read_text().startswith('{\n    "dependencies"')
@@ -98,7 +99,9 @@ def test_package_json_direct_and_transitive(tmp_path: Path) -> None:
     apply_change(
         tmp_path, ecosystem="npm", project_path="", package="qs", new_version="6.2.4", direct=False
     )
-    assert json.loads((tmp_path / "package.json").read_text())["overrides"] == {"qs": "6.2.4"}
+    assert json.loads((tmp_path / "package.json").read_text())["overrides"] == {
+        "express": "$express", "qs": "6.2.4",
+    }
 
 
 def test_guards(tmp_path: Path) -> None:

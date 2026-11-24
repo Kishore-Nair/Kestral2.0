@@ -23,7 +23,8 @@ from app.database.models import (
 from app.database.session import get_db
 from app.graph import build_graph
 from app.main import app
-from app.schemas.findings import FindingsDocument, FindingStats
+from app.remediation.generator import generate_proposal
+from app.schemas.findings import FindingsDocument, FindingStats, SourceRun
 from app.schemas.inventory import Inventory
 from app.schemas.validation import ValidationChange
 from app.validation import compare, service
@@ -97,7 +98,7 @@ def fake_pipeline(after_findings: FindingsDocument | None = None):
         base = after_findings or FindingsDocument(
             scan_id=scan_id,
             findings=[],
-            sources=[],
+            sources=[SourceRun(name="OSV", status="ok", queried=2)],
             partial=False,
             warnings=[],
             stats=FindingStats(
@@ -110,7 +111,12 @@ def fake_pipeline(after_findings: FindingsDocument | None = None):
                 components_not_assessed=0,
             ),
         )
-        return base.model_copy(update={"scan_id": scan_id})
+        return base.model_copy(
+            update={
+                "scan_id": scan_id,
+                "sources": base.sources or [SourceRun(name="OSV", status="ok", queried=2)],
+            }
+        )
 
     return lambda: (discover, generate, graph, analyze, lambda: None)
 
@@ -138,7 +144,7 @@ def roots(tmp_path: Path, monkeypatch):
     return tmp_path
 
 
-def test_fix_verified_without_container(roots: Path) -> None:
+def test_fix_unverified_without_container(roots: Path) -> None:
     original = (roots / "scans" / SCAN_ID / "findings.json").read_bytes()
     result = service.execute(
         settings,
@@ -151,7 +157,7 @@ def test_fix_verified_without_container(roots: Path) -> None:
         runtime_probe=lambda _p: None,
         lock_regenerator=lambda project, timeout: "install --package-lock-only --ignore-scripts",
     )
-    assert result.verdict == "FIXED", result.verdict_reason
+    assert result.verdict == "FAILED", result.verdict_reason
     assert result.tests_status == "not_run" and "never runs" in result.tests_detail
     steps = {s.id: s.status for s in result.steps}
     assert steps == {
@@ -160,7 +166,7 @@ def test_fix_verified_without_container(roots: Path) -> None:
         "lockfile": "passed",
         "tests": "not_run",
         "rescan": "passed",
-        "compare": "passed",
+        "compare": "warning",
     }
     assert [d.path for d in result.diffs] == ["package.json"]
     assert '"qs": "6.2.4"' in result.diffs[0].diff  # transitive: npm overrides
@@ -307,6 +313,7 @@ def client(roots: Path, monkeypatch) -> Generator[TestClient, None, None]:
 
     with sessions() as db:
         db.add(make_scan())
+        generated = generate_proposal(findings_document().findings[0], SCAN_ID)
         db.add(
             RemediationProposalRow(
                 proposal_id=PROPOSAL,
@@ -323,8 +330,8 @@ def client(roots: Path, monkeypatch) -> Generator[TestClient, None, None]:
                 evidence_json=[{"path": "package-lock.json", "kind": "lockfile", "locator": "x"}],
                 uncertainty_json=[],
                 repository_commit=COMMIT,
-                finding_digest="f" * 64,
-                proposal_digest="p" * 64,
+                finding_digest=generated.finding_digest,
+                proposal_digest=generated.proposal_digest,
                 status="APPROVED",
                 version=1,
             )
@@ -338,8 +345,8 @@ def client(roots: Path, monkeypatch) -> Generator[TestClient, None, None]:
                 reason="approved",
                 factors_json=[],
                 repository_commit=COMMIT,
-                finding_digest="f" * 64,
-                proposal_digest="p" * 64,
+                finding_digest=generated.finding_digest,
+                proposal_digest=generated.proposal_digest,
             )
         )
         db.commit()
@@ -606,7 +613,7 @@ def test_fresh_lock_note_is_reported(roots: Path) -> None:
         runtime_probe=lambda _p: "podman",
         uv_lock_regenerator=uv,
     )
-    assert result.verdict == "FIXED"
+    assert result.verdict == "FAILED"
     assert "fresh lock was resolved" in next(s.detail for s in result.steps if s.id == "lockfile")
     # The rescan moved qs (the target) and httpx; only httpx belongs in the note.
     note = next(
